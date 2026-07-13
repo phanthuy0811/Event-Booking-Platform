@@ -125,3 +125,6 @@ docker compose up -d
 
 ## 5. Chạy migration đầu tiên
 npx prisma migrate dev --name init
+
+## 6. Chạy hệ thống
+npm run start:dev
