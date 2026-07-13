@@ -1,0 +1,31 @@
+version: "3.9"
+
+# Docker-compose này CHỈ dùng để chạy hạ tầng (Postgres + Redis) cho môi trường dev.
+# Chưa đóng gói NestJS app — việc đó để sau khi code xong (Phase cuối).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: event-booking-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: event_booking
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: event-booking-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:

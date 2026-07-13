@@ -1,0 +1,245 @@
+// ============================================================
+// Event Booking Platform — Prisma Schema
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------
+
+enum Role {
+  GUEST
+  ORGANIZER
+  ADMIN
+}
+
+enum EventStatus {
+  DRAFT
+  PENDING_APPROVAL
+  PUBLISHED
+  CANCELLED
+  CLOSED  
+}
+
+enum ReservationStatus {
+  HOLDING
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+// ------------------------------------------------------------
+// USER
+// ------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         Role     @default(GUEST)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organizedEvents Event[]        @relation("OrganizerEvents")
+  reservations    Reservation[]
+  orders          Order[]
+  notifications   Notification[]
+
+  @@map("users")
+}
+
+// ------------------------------------------------------------
+// EVENT
+// ------------------------------------------------------------
+
+model Event {
+  id          String      @id @default(uuid())
+  title       String
+  description String?
+  bannerUrl   String?
+  location    String
+  category    String?
+  startTime   DateTime
+  endTime     DateTime
+  status      EventStatus @default(DRAFT)
+
+  organizerId String
+  organizer   User   @relation("OrganizerEvents", fields: [organizerId], references: [id])
+
+  ticketTypes TicketType[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([organizerId])
+  @@map("events")
+}
+
+// ------------------------------------------------------------
+// TICKET TYPE (hạng vé — không phải sơ đồ ghế)
+// ------------------------------------------------------------
+
+model TicketType {
+  id                String    @id @default(uuid())
+  eventId           String
+  event             Event     @relation(fields: [eventId], references: [id])
+  name              String
+  price             Decimal   @db.Decimal(12, 2)
+  totalQuantity     Int
+  remainingQuantity Int
+  salesStart        DateTime?
+  salesEnd          DateTime?
+
+  // dùng cho optimistic locking / version check ở tầng DB nếu cần
+  version Int @default(0)
+
+  reservations Reservation[]
+  orderItems   OrderItem[]
+  tickets      Ticket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId])
+  @@map("ticket_types")
+}
+
+// ------------------------------------------------------------
+// RESERVATION (giữ chỗ tạm thời — trái tim của bài toán concurrency)
+// ------------------------------------------------------------
+
+model Reservation {
+  id           String            @id @default(uuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id])
+  ticketTypeId String
+  ticketType   TicketType        @relation(fields: [ticketTypeId], references: [id])
+  quantity     Int
+  status       ReservationStatus @default(HOLDING)
+  expiresAt    DateTime
+
+  order Order?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // dùng để cron/queue job quét các reservation hết hạn hiệu quả
+  @@index([status, expiresAt])
+  @@index([ticketTypeId])
+  @@map("reservations")
+}
+
+// ------------------------------------------------------------
+// ORDER
+// ------------------------------------------------------------
+
+model Order {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  reservationId String      @unique
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+  totalAmount   Decimal     @db.Decimal(12, 2)
+  status        OrderStatus @default(PENDING)
+
+  items   OrderItem[]
+  payment Payment?
+  tickets Ticket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id           String     @id @default(uuid())
+  orderId      String
+  order        Order      @relation(fields: [orderId], references: [id])
+  ticketTypeId String
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
+  quantity     Int
+  unitPrice    Decimal    @db.Decimal(12, 2)
+
+  @@map("order_items")
+}
+
+// ------------------------------------------------------------
+// PAYMENT (idempotent qua referenceId unique)
+// ------------------------------------------------------------
+
+model Payment {
+  id          String        @id @default(uuid())
+  orderId     String        @unique
+  order       Order         @relation(fields: [orderId], references: [id])
+  provider    String // "mock" | "vnpay" | "momo" | "stripe"
+  referenceId String        @unique // dùng để check idempotency khi webhook gọi lại
+  amount      Decimal       @db.Decimal(12, 2)
+  status      PaymentStatus @default(PENDING)
+  paidAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payments")
+}
+
+// ------------------------------------------------------------
+// TICKET (vé điện tử QR — sinh ra sau khi order paid)
+// ------------------------------------------------------------
+
+model Ticket {
+  id           String    @id @default(uuid())
+  orderId      String
+  order        Order     @relation(fields: [orderId], references: [id])
+  ticketTypeId String
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
+  qrCode       String    @unique
+  checkedInAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@map("tickets")
+}
+
+// ------------------------------------------------------------
+// NOTIFICATION
+// ------------------------------------------------------------
+
+model Notification {
+  id      String  @id @default(uuid())
+  userId  String
+  user    User    @relation(fields: [userId], references: [id])
+  type    String // "booking_confirmed" | "event_reminder" | "event_cancelled" ...
+  title   String
+  message String
+  isRead  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
