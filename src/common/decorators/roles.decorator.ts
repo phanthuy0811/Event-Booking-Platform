@@ -1,8 +1,8 @@
 import { SetMetadata } from "@nestjs/common";
 
 
-//Dùng để gắn thẻ quyền hạn (Metadata) cho API. 
-// Ví dụ: @Roles('ADMIN', 'ORGANIZER')
-// Thông tin này sau đó sẽ được file roles.guard.ts đọc để kiểm tra quyền.
+//Tạo 1 hằng số ROLES_KEY gán là roles
 export const ROLES_KEY = 'roles';
+// Tạo ra 1 decorator tên là @Roles().  Dấu ...roles nghĩa là nó nhận vào vô số chữ (ví dụ: 'ADMIN', 'ORGANIZER').
+// Hàm SetMetadata của NestJS sẽ lấy cái mảng chữ đó dán ẩn vào API đang được gọi.
 export const Roles = (...roles: string[]) => SetMetadata(ROLES_KEY, roles);
