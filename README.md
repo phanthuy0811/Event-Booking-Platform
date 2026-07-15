@@ -128,3 +128,6 @@ npx prisma migrate dev --name init
 
 ## 6. Chạy hệ thống
 npm run start:dev
+
+## 7. Cài thư viện redis
+npm install ioredis
