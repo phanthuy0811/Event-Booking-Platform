@@ -6,9 +6,11 @@ import { LoggerMiddleware } from './common/middlewares/logger.middleware';
 import { TicketTypeModule } from './ticket-type/ticket-type.module';
 import { EventsModule } from './events/events.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { QueueModule } from './queue/queue.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, TicketTypeModule, EventsModule, ReservationsModule],
+  imports: [PrismaModule, AuthModule, UsersModule, TicketTypeModule, EventsModule, ReservationsModule, QueueModule, RedisModule],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
