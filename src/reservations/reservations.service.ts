@@ -1,0 +1,195 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { RedisLockService } from 'src/redis/redis-lock.service';
+import { TicketTypeService } from 'src/ticket-type/ticket-type.service';
+import { RESERVATION_EXPIRE_JOB, RESERVATION_EXPIRE_QUEUE } from './reservations.constants';
+import { Queue } from 'bullmq';
+import { InjectQueue } from '@nestjs/bullmq';
+import { CreateReservationDto } from './dto/create-reservation.dto';
+import { ReservationStatus } from '@prisma/client';
+import { ForbiddenException } from '@nestjs/common';
+
+const HOLD_MINUTES = Number(process.env.RESERVATION_HOLD_MINUTES ?? 10); // thời gian giữ chỗ  
+
+@Injectable()
+export class ReservationsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ticketTypeService: TicketTypeService,
+    private readonly redisLockService: RedisLockService,
+    @InjectQueue(RESERVATION_EXPIRE_QUEUE) private readonly expireQueue: Queue,
+  ) { }
+
+  // Tao giu cho
+  async create(userId: string, dto: CreateReservationDto) {
+    const ticketType = await this.prisma.ticketType.findUnique({
+      where: { id: dto.ticketTypeId }
+    })
+
+    if (!ticketType) throw new NotFoundException('Khong tim thay loai ve')
+
+    const now = new Date();
+    if (ticketType.salesStart && now < ticketType.salesStart) {
+      throw new BadRequestException('Hang ve nay chua mo ban')
+    }
+    if (ticketType.salesEnd && now > ticketType.salesEnd) {
+      throw new BadRequestException('Hang ve nay da dong ban')
+    }
+    const expiresAt = new Date(now.getTime() + HOLD_MINUTES * 60 * 1000);
+
+
+    // Lớp bảo vệ đầu tiên: redis lock
+    // Mọi request cùng đặt vé cho CÙNG 1 ticketTypeId sẽ phải chờ ở đây,
+    // giành nhau đúng 1 key `lock:ticket-type:<id>`. Request nào giành được
+    // lock mới được chạy tiếp vào transaction DB bên dưới
+    const reservation = await this.redisLockService.withLock(
+      `ticket-type:${dto.ticketTypeId}`,
+      async () => {
+
+        // Lớp bảo vệ thứ 2 sau redis lock, transaction db để đảm bảo tính toàn vẹn dữ liệu
+        return this.prisma.$transaction(async (tx) => {
+          const result = await tx.ticketType.updateMany({
+            where: {
+              id: dto.ticketTypeId,
+              remainingQuantity: { gte: dto.quantity }
+            },
+            data: {
+              remainingQuantity: { decrement: dto.quantity },
+            }
+          });
+
+          if (result.count === 0) {
+            throw new BadRequestException(`So ve da dat vuot qua so luong con lai, chi con ${ticketType.remainingQuantity}`);
+          }
+
+          return tx.reservation.create({
+            data: {
+              userId,
+              ticketTypeId: dto.ticketTypeId,
+              quantity: dto.quantity,
+              status: ReservationStatus.HOLDING,
+              expiresAt,
+            },
+          });
+        });
+      },
+
+      { ttlMs: 5000, retryDelayMs: 100, maxRetries: 30 },
+    );
+
+    // Đẩy job delay vào BullMQ: sau HOLD_MINUTES phút, tự động expire
+    // nếu vẫn còn HOLDING. jobId = reservation.id để có thể remove job
+    // sau này nếu user confirm/cancel sớm hơn thời hạn.
+    await this.expireQueue.add(
+      RESERVATION_EXPIRE_JOB,
+      { reservationId: reservation.id },
+      { jobId: reservation.id, delay: HOLD_MINUTES * 60 * 1000 }
+    )
+
+    return reservation;
+
+  }
+
+
+  // Được gọi khi hết hạn giữ chỗ nếu user không confirm hoặc cancel 
+  async expireIfStillHolding(reservationId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const reservation = await tx.reservation.findUnique({
+        where: { id: reservationId }
+      });
+
+      // Nếu không tồn tại reservation hoặc đã confirm hoặc cancel thì không làm gì cả 
+      if (!reservation || reservation.status !== ReservationStatus.HOLDING) {
+        return;
+      }
+
+      await tx.reservation.update({
+        where: { id: reservationId },
+        data: { status: ReservationStatus.EXPIRED }
+      });
+
+      // Cộng trả lại số lượng đã trừ tạm lúc holding 
+      await tx.ticketType.update({
+        where: { id: reservation.ticketTypeId },
+        data: {
+          remainingQuantity: { increment: reservation.quantity }
+        }
+      });
+    })
+  }
+
+  // User chủ động hủy trước khi hết hạn
+  async cancel(id: string, userId: string) {
+    const reservation = await this.findOwnerOrThrow(id, userId)
+
+    if (reservation.status !== ReservationStatus.HOLDING) {
+      throw new BadRequestException('Chi co the huy giu cho dang o trang thai holding')
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.reservation.update({
+        where: { id },
+        data: { status: ReservationStatus.CANCELLED }
+      });
+      await tx.ticketType.update({
+        where: { id: reservation.ticketTypeId },
+        data: { remainingQuantity: { increment: reservation.quantity } }
+      })
+    })
+
+    // Xóa job delay khỏi hàng đợi để nó không tự động chạy khi hết hạn nữa
+    const job = await this.expireQueue.getJob(id);
+    if (job) await job.remove();
+
+    return { message: "Huy giu cho thanh cong" }
+
+  }
+
+
+  // Dùng nội bộ bởi order module sau khi thanh toán xong 
+  async confirm(reservationId: string) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id: reservationId }
+    })
+
+    if (!reservation) throw new NotFoundException('Khong tim thay giu cho');
+    if (reservation.status !== ReservationStatus.HOLDING) {
+      throw new BadRequestException('Giu cho nay khong con hieu luc');
+    }
+
+    // Không cần trừ thêm remaining nữa vì lúc create đã trừ rồi
+    const updated = await this.prisma.reservation.update({
+      where: { id: reservationId },
+      data: { status: ReservationStatus.CONFIRMED },
+    });
+
+    const job = await this.expireQueue.getJob(reservationId);
+    if (job) await job.remove();
+
+    return updated;
+  }
+
+  findMine(userId: string) {
+    return this.prisma.reservation.findMany({
+      where: { userId },
+      include: { ticketType: true },
+      orderBy: { createdAt: 'desc' }
+    })
+  }
+
+  private async findOwnerOrThrow(id: string, userId: string) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id },
+    });
+
+    if (!reservation) {
+      throw new NotFoundException("Khong tim thay giu cho")
+    }
+    if (reservation.userId !== userId) {
+      throw new ForbiddenException("Day khong phai giu cho cua ban")
+    }
+
+    return reservation;
+  }
+}
+
