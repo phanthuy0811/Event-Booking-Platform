@@ -3,10 +3,11 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { LoggerMiddleware } from './common/middlewares/logger.middleware';
+import { TicketTypeModule } from './ticket-type/ticket-type.module';
 import { EventsModule } from './events/events.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, EventsModule],
+  imports: [PrismaModule, AuthModule, UsersModule, TicketTypeModule, EventsModule],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
