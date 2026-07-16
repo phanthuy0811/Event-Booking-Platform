@@ -1,0 +1,11 @@
+import { Module } from '@nestjs/common';
+import { EventsService } from './events.service';
+import { EventsController } from './events.controller';
+import { AuthModule } from 'src/auth/auth.module';
+
+@Module({
+  imports: [AuthModule],
+  controllers: [EventsController],
+  providers: [EventsService],
+})
+export class EventsModule { }
