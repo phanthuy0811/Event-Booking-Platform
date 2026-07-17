@@ -147,6 +147,7 @@ export class ReservationsService {
 
 
   // Dùng nội bộ bởi order module sau khi thanh toán xong 
+  // Xác nhận giữ chỗ 
   async confirm(reservationId: string) {
     const reservation = await this.prisma.reservation.findUnique({
       where: { id: reservationId }
