@@ -15,7 +15,7 @@ export class OrdersController {
     @CurrentUser() user: CurrentUserPayload,
     @Body() dto: CreateOrderDto
   ) {
-    return this.ordersService.createFromReservation(user.userId, dto.reservationId)
+    return this.ordersService.createFromReservation(user.userId, dto.reservationId, dto.reminderMinutesBefore)
   }
 
   @Get('my')
