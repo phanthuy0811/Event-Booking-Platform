@@ -1,19 +1,20 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { CreateOrderDto } from './dto/create-order.dto';
-import { UpdateOrderDto } from './dto/update-order.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ReservationsService } from 'src/reservations/reservations.service';
 import { OrderStatus, ReservationStatus } from '@prisma/client';
+import { NotificationsService } from 'src/notifications/notifications.service';
+import { DEFAULT_REMINDER_MINUTES, REMINDER_PRESETS_MINUTES } from 'src/notifications/notifications.constants';
 
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly reservationService: ReservationsService
+    private readonly reservationService: ReservationsService,
+    private readonly notificationsService: NotificationsService,
   ) { }
 
   // Tạo order từ 1 Reservation đang holding 
-  async createFromReservation(userId: string, reservationId: string) {
+  async createFromReservation(userId: string, reservationId: string, reminderMinutesBefore?: number,) {
     const reservation = await this.prisma.reservation.findUnique({
       where: { id: reservationId },
       include: { ticketType: true }
@@ -37,6 +38,15 @@ export class OrdersService {
       throw new BadRequestException('Giu cho nay da duoc tao don hang roi')
     }
 
+    if (
+      reminderMinutesBefore !== undefined &&
+      !REMINDER_PRESETS_MINUTES.includes(reminderMinutesBefore as any)
+    ) {
+      throw new BadRequestException(
+        `Thời gian nhắc lịch không hợp lệ, chỉ chấp nhận: ${REMINDER_PRESETS_MINUTES.join(', ')} (phút)`,
+      );
+    }
+
     // Chốt giá TẠI THỜI ĐIỂM MUA - nếu sau này organizer đổi giá vé,
     // đơn hàng cũ không bị ảnh hưởng
     const unitPrice = reservation.ticketType.price;
@@ -47,6 +57,7 @@ export class OrdersService {
         reservationId: reservationId,
         totalAmount: totalAmount,
         status: OrderStatus.PENDING,
+        reminderMinutesBefore: reminderMinutesBefore ?? DEFAULT_REMINDER_MINUTES,
         items: {
           create: {
             ticketTypeId: reservation.ticketTypeId,
@@ -130,10 +141,20 @@ export class OrdersService {
 
     // Confirm reservation trước (đổi HOLDING -> CONFIRMED, hủy job auto-expire)
     await this.reservationService.confirm(order.reservationId);
-    return this.prisma.order.update({
+    const updated = await this.prisma.order.update({
       where: { id: orderId },
       data: { status: OrderStatus.PAID }
-    })
+    });
+
+    // Gửi email + notification xác nhận, và lên lịch nhắc trước giờ event.
+    Promise.all([
+      this.notificationsService.sendBookingConfirmation(orderId),
+      this.notificationsService.scheduleEventReminder(orderId),
+    ]).catch((err) => {
+      console.error(`Lỗi gửi notification cho order ${orderId}:`, err);
+    });
+
+    return updated;
   }
 }
 
