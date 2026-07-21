@@ -118,31 +118,51 @@ export class ReservationsService {
     })
   }
 
-  // User chủ động hủy trước khi hết hạn
+  // User chủ động hủy giữ chỗ trước khi hết hạn
   async cancel(id: string, userId: string) {
-    const reservation = await this.findOwnerOrThrow(id, userId)
+    const reservation = await this.findOwnerOrThrow(id, userId);
+    return this.releaseReservation(reservation);
+  }
 
+  // Dùng khi Payments module thanh toán thất bại
+  async releaseInternal(reservationId: string) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id: reservationId },
+    });
+    if (!reservation) throw new NotFoundException('Không tìm thấy giữ chỗ');
     if (reservation.status !== ReservationStatus.HOLDING) {
-      throw new BadRequestException('Chi co the huy giu cho dang o trang thai holding')
+      return reservation;
+    }
+    return this.releaseReservation(reservation);
+  }
+
+  private async releaseReservation(reservation: {
+    id: string;
+    ticketTypeId: string;
+    quantity: number;
+    status: ReservationStatus;
+  }) {
+    if (reservation.status !== ReservationStatus.HOLDING) {
+      throw new BadRequestException(
+        'Chỉ có thể hủy giữ chỗ đang ở trạng thái holding',
+      );
     }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.reservation.update({
-        where: { id },
-        data: { status: ReservationStatus.CANCELLED }
+        where: { id: reservation.id },
+        data: { status: ReservationStatus.CANCELLED },
       });
       await tx.ticketType.update({
         where: { id: reservation.ticketTypeId },
-        data: { remainingQuantity: { increment: reservation.quantity } }
-      })
-    })
+        data: { remainingQuantity: { increment: reservation.quantity } },
+      });
+    });
 
-    // Xóa job delay khỏi hàng đợi để nó không tự động chạy khi hết hạn nữa
-    const job = await this.expireQueue.getJob(id);
+    const job = await this.expireQueue.getJob(reservation.id);
     if (job) await job.remove();
 
-    return { message: "Huy giu cho thanh cong" }
-
+    return { message: 'Đã hủy giữ chỗ' };
   }
 
 

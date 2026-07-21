@@ -9,9 +9,10 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, TicketTypeModule, EventsModule, ReservationsModule, QueueModule, RedisModule, OrdersModule],
+  imports: [PrismaModule, AuthModule, UsersModule, TicketTypeModule, EventsModule, ReservationsModule, QueueModule, RedisModule, OrdersModule, PaymentsModule],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

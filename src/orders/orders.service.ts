@@ -78,23 +78,44 @@ export class OrdersService {
     return order;
   }
 
-  // User chủ động hủy đơn hàng, trả lại reservation
+  // User chủ động hủy đơn khi CHƯA thanh toán - nhả lại reservation
   async cancel(id: string, userId: string) {
     const order = await this.findOneOwned(id, userId);
+    return this.cancelOrder(order.id, order.reservationId, order.status);
+  }
+
+  // Dùng khi thanh toán thất bại hoặc reservation đã hết hạn trước khi thanh toán xong kịp
+  async cancelInternal(orderId: string) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
     if (order.status !== OrderStatus.PENDING) {
-      throw new BadRequestException('Chi co the huy don hang o trang thai cho thanh toan');
-    };
+      return order;
+    }
+    return this.cancelOrder(order.id, order.reservationId, order.status);
+  }
+
+  private async cancelOrder(
+    orderId: string,
+    reservationId: string,
+    currentStatus: OrderStatus,
+  ) {
+    if (currentStatus !== OrderStatus.PENDING) {
+      throw new BadRequestException(
+        'Chỉ có thể hủy đơn hàng đang ở trạng thái chờ thanh toán',
+      );
+    }
 
     await this.prisma.order.update({
-      where: { id },
+      where: { id: orderId },
       data: { status: OrderStatus.CANCELLED },
     });
 
-    // Trả lại reservaation
-    await this.reservationService.cancel(order.reservationId, userId);
-    return { message: 'Huy don hang thanh cong' }
+    await this.reservationService.releaseInternal(reservationId);
 
+    return { message: 'Đã hủy đơn hàng' };
   }
+
+
 
   // Dùng để payment module gọi sau khi xác nhận thanh toán thành công qua webhook
   async markAsPaid(orderId: string) {

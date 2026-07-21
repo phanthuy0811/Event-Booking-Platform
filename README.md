@@ -1,133 +1,284 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🎟️ Event Booking Platform
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Hệ thống đặt vé sự kiện trực tuyến được xây dựng bằng **NestJS**, giải quyết bài toán **concurrency** (nhiều người cùng đặt vé một lúc) thông qua **Redis Distributed Lock** và **BullMQ Queue**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 🏗️ Kiến trúc tổng thể
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+Client
+  │
+  ▼
+NestJS REST API (Port 3000)
+  │
+  ├── PostgreSQL (Prisma ORM) ─── Lưu trữ dữ liệu chính
+  ├── Redis ────────────────────── Distributed Lock + BullMQ Queue
+  └── BullMQ Workers ──────────── Xử lý job bất đồng bộ
+        ├── ReservationExpireWorker  (tự động hủy giữ chỗ hết hạn)
+        └── MockPaymentWorker        (giả lập webhook cổng thanh toán)
 ```
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
+## 🛠️ Tech Stack
 
-# watch mode
-$ npm run start:dev
+| Thành phần | Công nghệ |
+|---|---|
+| Framework | NestJS 11 |
+| Ngôn ngữ | TypeScript |
+| ORM | Prisma 6 |
+| Database | PostgreSQL 16 |
+| Cache / Lock | Redis 7 (ioredis) |
+| Queue / Worker | BullMQ |
+| Authentication | JWT (Passport.js) |
+| Validation | class-validator + class-transformer |
+| Mật khẩu | bcrypt |
+| QR Code | qrcode |
 
-# production mode
-$ npm run start:prod
+---
+
+## 📦 Cấu trúc Module
+
+```
+src/
+├── auth/           # Đăng ký, đăng nhập, JWT strategy
+├── users/          # Quản lý người dùng
+├── events/         # Quản lý sự kiện (CRUD, duyệt sự kiện)
+├── ticket-type/    # Quản lý loại vé của sự kiện
+├── reservations/   # 🔑 Giữ chỗ tạm thời (HOLDING → CONFIRMED/EXPIRED/CANCELLED)
+├── orders/         # Quản lý đơn hàng
+├── payments/       # Xử lý thanh toán + Mock webhook
+├── queue/          # Cấu hình BullMQ Queue
+├── redis/          # Cấu hình Redis + Distributed Lock Service
+├── prisma/         # PrismaService
+└── common/         # Guards, Decorators, Filters, Interceptors, Middlewares
 ```
 
-## Run tests
+---
 
-```bash
-# unit tests
-$ npm run test
+## 🔄 Luồng đặt vé (Core Business Flow)
 
-# e2e tests
-$ npm run test:e2e
+```
+1. [POST /reservations]
+   User chọn vé → Redis Lock đảm bảo chỉ 1 request ghi DB tại một thời điểm
+   → Trừ remainingQuantity → Tạo Reservation (HOLDING)
+   → Đặt job tự hủy sau 10 phút vào BullMQ
 
-# test coverage
-$ npm run test:cov
+2. [POST /orders]
+   User xác nhận muốn mua → Tạo Order (PENDING) từ Reservation đang HOLDING
+
+3. [POST /payments]
+   User bấm "Thanh toán" → Tạo Payment (PENDING)
+   → Đẩy job giả lập webhook vào BullMQ (delay 5s)
+
+4. [BullMQ Worker chạy ngầm sau 5s]
+   Giả lập cổng thanh toán gọi webhook → handleWebhook()
+   → Nếu PAID: Order → PAID, Reservation → CONFIRMED, xóa job hết hạn
+   → Nếu FAILED: Order → CANCELLED, Reservation → CANCELLED, hoàn lại số lượng vé
+
+5. [Nếu không thanh toán trong 10 phút]
+   BullMQ Expire Job chạy → Reservation → EXPIRED → Hoàn lại remainingQuantity
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## 🔐 Xử lý Concurrency
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Khi nhiều người cùng bấm đặt vé **một loại vé chỉ còn 1 chỗ**:
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```
+10 request đồng thời
+        ↓
+Redis Lock (lock:ticket-type:<id>) — chỉ cho 1 request vào mỗi lần
+        ↓
+Request nào lấy được lock → Kiểm tra & trừ remainingQuantity trong DB Transaction
+        ↓
+Request đầu thành công → 9 request còn lại thấy remaining = 0 → Báo lỗi "hết vé"
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+**Hai lớp bảo vệ:**
+1. **Redis Distributed Lock** — ngăn race condition ở tầng ứng dụng
+2. **Prisma DB Transaction** — đảm bảo tính toàn vẹn dữ liệu ở tầng DB
 
-## Resources
+---
 
-Check out a few resources that may come in handy when working with NestJS:
+## ⚙️ Cài đặt & Chạy
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### Yêu cầu
+- Node.js >= 18
+- Docker & Docker Compose
 
-## Support
+### Bước 1: Clone và cài dependencies
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```bash
+npm install
+```
 
-## Stay in touch
+### Bước 2: Tạo file môi trường
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```bash
+cp .env.example .env  # hoặc tạo thủ công file .env
+```
 
-## License
+Nội dung file `.env`:
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```env
+# Database
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/event_booking?schema=public"
 
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
 
+# JWT
+JWT_SECRET=your_secret_key_here
+JWT_EXPIRES_IN=1d
 
+# App
+PORT=3000
 
-## 1. Khởi tạo project
-nest new event-booking-backend
-cd event-booking-backend
+# Reservation (số phút giữ chỗ tối đa)
+RESERVATION_HOLD_MINUTES=10
 
-## 2. Cài Prisma + các thư viện chính
-npm install prisma @prisma/client
-npm install @nestjs/passport passport passport-jwt @nestjs/jwt
-npm install @nestjs/websockets @nestjs/platform-socket.io
-npm install @nestjs/bullmq bullmq ioredis
-npm install class-validator class-transformer joi
-npm install @nestjs/swagger
-npm install qrcode
+# Mock payment (thời gian delay giả lập webhook, tính bằng ms)
+MOCK_PAYMENT_WEBHOOK_DELAY_MS=5000
+```
 
-npx prisma init
+### Bước 3: Khởi động hạ tầng (PostgreSQL + Redis)
 
-## 3. Chép 3 file mình vừa tạo vào đúng vị trí:
-### prisma/schema.prisma
-### docker-compose.yml (ở root)
-### .env  (copy từ .env.example rồi điền)
+```bash
+docker-compose up -d
+```
 
-## 4. Bật hạ tầng dev
-docker compose up -d
+### Bước 4: Chạy migration database
 
-## 5. Chạy migration đầu tiên
-npx prisma migrate dev --name init
+```bash
+npx prisma migrate dev
+```
 
-## 6. Chạy hệ thống
+### Bước 5: Khởi động server
+
+```bash
+# Development (hot reload)
 npm run start:dev
 
-## 7. Cài thư viện redis
-npm install ioredis
+# Production
+npm run start:prod
+```
+
+Server chạy tại `http://localhost:3000`
+
+---
+
+## 📡 API Endpoints
+
+> Tất cả các API có dấu 🔒 đều yêu cầu Header: `Authorization: Bearer <JWT_TOKEN>`
+
+### 🔑 Auth
+
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| POST | `/auth/register` | Đăng ký tài khoản |
+| POST | `/auth/login` | Đăng nhập, nhận JWT token |
+---
+
+### 🎪 Events
+
+| Method | Endpoint | Mô tả | Auth |
+|---|---|---|---|
+| GET | `/events` | Lấy danh sách sự kiện đã published | |
+| GET | `/events/:id` | Xem chi tiết sự kiện | |
+| POST | `/events` | Tạo sự kiện mới | 🔒 ORGANIZER |
+| PATCH | `/events/:id` | Cập nhật sự kiện | 🔒 ORGANIZER |
+| DELETE | `/events/:id` | Xóa sự kiện | 🔒 ORGANIZER |
+
+---
+
+### 🎫 Ticket Types
+
+| Method | Endpoint | Mô tả | Auth |
+|---|---|---|---|
+| GET | `/ticket-type/event/:eventId` | Lấy danh sách loại vé của sự kiện | |
+| POST | `/ticket-type` | Tạo loại vé | 🔒 ORGANIZER |
+| PATCH | `/ticket-type/:id` | Cập nhật loại vé | 🔒 ORGANIZER |
+
+---
+
+### 📌 Reservations (Giữ chỗ)
+
+| Method | Endpoint | Mô tả | Auth |
+|---|---|---|---|
+| POST | `/reservations` | Giữ chỗ (bước 1 của luồng đặt vé) | 🔒 |
+| GET | `/reservations/my` | Xem lịch sử giữ chỗ của tôi | 🔒 |
+| PATCH | `/reservations/:id/cancel` | Hủy giữ chỗ | 🔒 |
+
+---
+
+### 🛒 Orders (Đơn hàng)
+
+| Method | Endpoint | Mô tả | Auth |
+|---|---|---|---|
+| POST | `/orders` | Tạo đơn hàng từ giữ chỗ (bước 2) | 🔒 |
+| GET | `/orders/my` | Xem danh sách đơn hàng của tôi | 🔒 |
+| GET | `/orders/:id` | Xem chi tiết một đơn hàng | 🔒 |
+| PATCH | `/orders/:id/cancel` | Hủy đơn hàng (khi chưa thanh toán) | 🔒 |
+
+---
+
+### 💳 Payments (Thanh toán)
+
+| Method | Endpoint | Mô tả | Auth |
+|---|---|---|---|
+| POST | `/payments` | Khởi tạo thanh toán (bước 3) | 🔒 |
+| GET | `/payments/order/:orderId` | Xem trạng thái thanh toán của đơn hàng | 🔒 |
+| POST | `/payments/webhook` | Nhận callback từ cổng thanh toán | (Internal) |
+
+---
+
+## 🧪 Test Concurrency
+
+Script test gửi 10 request đặt vé đồng thời để kiểm tra Redis Lock:
+
+```bash
+node test-lock.js
+```
+
+## 🗃️ Database Schema
+
+```
+User ──< Event ──< TicketType ──< Reservation ──── Order ──< OrderItem
+                                                      │
+                                                      └── Payment
+                                                      └──< Ticket
+                                                      └──< Notification (User)
+```
+
+**Trạng thái Reservation:**
+```
+HOLDING → CONFIRMED (thanh toán thành công)
+        → EXPIRED   (hết 10 phút không thanh toán)
+        → CANCELLED (người dùng tự hủy)
+```
+
+**Trạng thái Order:**
+```
+PENDING → PAID      (thanh toán thành công)
+        → CANCELLED (hủy đơn / thanh toán thất bại)
+        → REFUNDED  (hoàn tiền)
+```
+
+---
+
+## 📁 Biến môi trường
+
+| Biến | Mô tả | Mặc định |
+|---|---|---|
+| `DATABASE_URL` | Connection string PostgreSQL | |
+| `REDIS_HOST` | Host Redis | `localhost` |
+| `REDIS_PORT` | Port Redis | `6379` |
+| `JWT_SECRET` | Secret key để ký JWT | |
+| `JWT_EXPIRES_IN` | Thời gian hết hạn JWT | `1d` |
+| `PORT` | Port server lắng nghe | `3000` |
+| `RESERVATION_HOLD_MINUTES` | Số phút giữ chỗ tối đa | `10` |
+| `MOCK_PAYMENT_WEBHOOK_DELAY_MS` | Delay giả lập webhook thanh toán (ms) | `5000` |
