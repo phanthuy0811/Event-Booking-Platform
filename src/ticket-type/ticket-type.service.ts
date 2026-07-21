@@ -22,12 +22,8 @@ export class TicketTypeService {
 
   async update(eventId: string, ticketTypeId: string, organizerId: string, dto: UpdateTicketTypeDto) {
     await this.searchEventByOrganizer(eventId, organizerId)
-    const ticketType = await this.prisma.ticketType.findUnique({
-      where: { id: ticketTypeId }
-    })
-    if (!ticketType) {
-      throw new NotAcceptableException('Khong tim thay hang ve')
-    }
+    const ticketType = await this.findOne(ticketTypeId)
+
     if (eventId !== ticketType.eventId) {
       throw new NotFoundException('Hang ve khong thuoc su kien nay')
     }
@@ -54,18 +50,22 @@ export class TicketTypeService {
 
   async delete(eventId: string, ticketTypeId: string, organizerId: string) {
     await this.searchEventByOrganizer(eventId, organizerId)
-    const ticketType = await this.prisma.ticketType.findUnique({
-      where: { id: ticketTypeId, eventId }
-    })
-    if (!ticketType) {
-      throw new NotAcceptableException('Khong tim thay hang ve')
-    }
+    const ticketType = await this.findOne(ticketTypeId)
+
     if (ticketType.totalQuantity !== ticketType.remainingQuantity) {
       throw new BadRequestException('Khong the xoa hang ve da duoc ban')
     }
     return this.prisma.ticketType.delete({
       where: { id: ticketTypeId }
     })
+  }
+
+  async findOne(id: string) {
+    const ticketType = await this.prisma.ticketType.findUnique({
+      where: { id },
+    });
+    if (!ticketType) throw new NotFoundException('Không tìm thấy hạng vé');
+    return ticketType;
   }
 
   async findAllTicketType(eventId: string) {

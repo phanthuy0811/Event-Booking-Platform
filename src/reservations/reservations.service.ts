@@ -8,6 +8,8 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { ReservationStatus } from '@prisma/client';
 import { ForbiddenException } from '@nestjs/common';
+import { AppGateway } from 'src/websocket/websocket.gateway';
+import { removeAllListeners } from 'process';
 
 const HOLD_MINUTES = Number(process.env.RESERVATION_HOLD_MINUTES ?? 10); // thời gian giữ chỗ  
 
@@ -17,16 +19,13 @@ export class ReservationsService {
     private readonly prisma: PrismaService,
     private readonly ticketTypeService: TicketTypeService,
     private readonly redisLockService: RedisLockService,
+    private readonly appGateway: AppGateway,
     @InjectQueue(RESERVATION_EXPIRE_QUEUE) private readonly expireQueue: Queue,
   ) { }
 
   // Tao giu cho
   async create(userId: string, dto: CreateReservationDto) {
-    const ticketType = await this.prisma.ticketType.findUnique({
-      where: { id: dto.ticketTypeId }
-    })
-
-    if (!ticketType) throw new NotFoundException('Khong tim thay loai ve')
+    const ticketType = await this.ticketTypeService.findOne(dto.ticketTypeId)
 
     const now = new Date();
     if (ticketType.salesStart && now < ticketType.salesStart) {
@@ -86,21 +85,24 @@ export class ReservationsService {
       { jobId: reservation.id, delay: HOLD_MINUTES * 60 * 1000 }
     )
 
+    // Broadcast cho mọi client đang xem trang chi tiết event này biết
+    // remainingQuantity vừa giảm - real-time
+    await this.broadcastAvailability(reservation.ticketTypeId)
+
     return reservation;
 
   }
 
-
   // Được gọi khi hết hạn giữ chỗ nếu user không confirm hoặc cancel 
   async expireIfStillHolding(reservationId: string) {
-    await this.prisma.$transaction(async (tx) => {
+    const releaseTicketTypeId = await this.prisma.$transaction(async (tx) => {
       const reservation = await tx.reservation.findUnique({
         where: { id: reservationId }
       });
 
       // Nếu không tồn tại reservation hoặc đã confirm hoặc cancel thì không làm gì cả 
       if (!reservation || reservation.status !== ReservationStatus.HOLDING) {
-        return;
+        return null;
       }
 
       await tx.reservation.update({
@@ -115,7 +117,14 @@ export class ReservationsService {
           remainingQuantity: { increment: reservation.quantity }
         }
       });
-    })
+
+      return reservation.ticketTypeId;
+
+    });
+
+    if (releaseTicketTypeId) {
+      await this.broadcastAvailability(releaseTicketTypeId)
+    }
   }
 
   // User chủ động hủy giữ chỗ trước khi hết hạn
@@ -161,6 +170,8 @@ export class ReservationsService {
 
     const job = await this.expireQueue.getJob(reservation.id);
     if (job) await job.remove();
+
+    await this.broadcastAvailability(reservation.ticketTypeId);
 
     return { message: 'Đã hủy giữ chỗ' };
   }
@@ -211,6 +222,20 @@ export class ReservationsService {
     }
 
     return reservation;
+  }
+
+
+  // Query lại giá trị MỚI NHẤT
+  private async broadcastAvailability(ticketTypeId: string) {
+    const ticketType = await this.prisma.ticketType.findUnique({
+      where: { id: ticketTypeId },
+    })
+    if (!ticketType) return;
+
+    this.appGateway.broadcastTicketAvailability(ticketType.eventId, {
+      ticketType: ticketType.id,
+      remainingQuantity: ticketType.remainingQuantity
+    })
   }
 }
 
