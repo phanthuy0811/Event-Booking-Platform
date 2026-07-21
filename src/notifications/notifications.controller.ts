@@ -18,5 +18,4 @@ export class NotificationsController {
   markAsRead(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.notificationsService.markAsRead(id, user.userId);
   }
-
 }
