@@ -11,9 +11,10 @@ import { RedisModule } from './redis/redis.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { WebsocketModule } from './websocket/websocket.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, TicketTypeModule, EventsModule, ReservationsModule, QueueModule, RedisModule, OrdersModule, PaymentsModule, WebsocketModule],
+  imports: [PrismaModule, AuthModule, UsersModule, TicketTypeModule, EventsModule, ReservationsModule, QueueModule, RedisModule, OrdersModule, PaymentsModule, WebsocketModule, NotificationsModule],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
