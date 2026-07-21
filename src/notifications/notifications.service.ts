@@ -42,7 +42,7 @@ export class NotificationsService {
 
     await this.mailerService.sendEmail({
       to: order.user.email,
-      subject: 'Xac nhan dat ve - ${event.title}',
+      subject: `Xác nhận đặt vé - ${event.title}`,
       html: this.buildBookingConfirmationHtml(order, event, item),
     });
 
