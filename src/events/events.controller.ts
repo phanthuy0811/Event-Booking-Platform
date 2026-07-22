@@ -42,7 +42,7 @@ export class EventsController {
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload
   ) {
-    return this.eventsService.cancel(id, user.userId)
+    return this.eventsService.cancel(id, user)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
