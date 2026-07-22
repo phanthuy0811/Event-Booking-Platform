@@ -71,7 +71,7 @@ export class NotificationsService {
     await this.reminderQueue.add(
       NOTIFICATION_REMINDER_JOB,
       { orderId },
-      { delay, jobId: `reminder:${orderId}` },
+      { delay, jobId: `reminder-${orderId}` },
     )
   }
 
