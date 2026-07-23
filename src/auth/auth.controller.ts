@@ -5,6 +5,7 @@ import { LoginDto } from './dto/login.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import type { CurrentUserPayload } from 'src/common/decorators/current-user.decorator';
+import { Headers } from '@nestjs/common';
 
 @Controller('auth')
 export class AuthController {
@@ -32,8 +33,11 @@ export class AuthController {
   @UseGuards(AuthGuard('jwt-refresh'))
   @HttpCode(HttpStatus.OK)
   @Post('logout')
-  logout(@CurrentUser() user: CurrentUserPayload) {
-    return this.authService.logout(user.userId, user.refreshToken!);
+  logout(
+    @CurrentUser() user: CurrentUserPayload,
+    @Headers('x-access-token') accessToken: string
+  ) {
+    return this.authService.logout(user.userId, user.refreshToken!, accessToken);
   }
 }
 

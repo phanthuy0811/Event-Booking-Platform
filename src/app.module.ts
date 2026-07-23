@@ -12,9 +12,10 @@ import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { CommonModule } from './common/common.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, TicketTypeModule, EventsModule, ReservationsModule, QueueModule, RedisModule, OrdersModule, PaymentsModule, WebsocketModule, NotificationsModule],
+  imports: [PrismaModule, AuthModule, UsersModule, TicketTypeModule, EventsModule, ReservationsModule, QueueModule, RedisModule, OrdersModule, PaymentsModule, WebsocketModule, NotificationsModule, CommonModule],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
