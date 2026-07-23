@@ -7,12 +7,14 @@ import { JwtService } from '@nestjs/jwt';
 import { Role } from '@prisma/client';
 import { LoginDto } from './dto/login.dto';
 import { v4 as uuidv4 } from 'uuid';
+import { CacheService } from 'src/redis/cache.service';
 
 @Injectable()
 export class AuthService {
   constructor(private readonly userService: UsersService,
     private readonly prisma: PrismaService,
-    private readonly jwtService: JwtService
+    private readonly jwtService: JwtService,
+    private readonly cacheService: CacheService
   ) { }
 
   async register(dto: RegisterDto) {
@@ -85,7 +87,8 @@ export class AuthService {
 
   }
 
-  async logout(userId: string, refreshToken: string) {
+  async logout(userId: string, refreshToken: string, accessToken?: string) {
+    // thu hồi refresh token 
     const tokens = await this.prisma.refreshToken.findMany({
       where: {
         userId,
@@ -102,6 +105,18 @@ export class AuthService {
         break;
       }
     }
+
+    // Thêm access token vào blacklist khi logout 
+    if (accessToken) {
+      const decoded = this.jwtService.decode(accessToken) as { exp?: number };
+      if (decoded?.exp) {
+        const ttl = decoded.exp - Math.floor(Date.now() / 1000);
+        if (ttl > 0) {
+          await this.cacheService.set(`blacklist:${accessToken}`, 'true', ttl);
+        }
+      }
+    }
+
     return { message: 'Đăng xuất thành công' };
   }
 
