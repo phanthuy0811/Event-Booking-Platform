@@ -4,6 +4,7 @@ export interface CurrentUserPayload {
     userId: string;
     email: string;
     role: string;
+    refreshToken?: string; // chỉ có khi dùng JwtRefreshStrategy
 }
 
 // Trích xuất thông tin người dùng từ request.user (đã được JWT Guard giải mã)

@@ -66,9 +66,27 @@ model User {
   reservations    Reservation[]
   orders          Order[]
   notifications   Notification[]
+  refreshTokens RefreshToken[]
 
   @@map("users")
 }
+
+
+// ------------------------------------------------------------
+// REFRESH TOKEN
+// ------------------------------------------------------------
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique          // lưu hash của token (không lưu plaintext)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
 
 // ------------------------------------------------------------
 // EVENT

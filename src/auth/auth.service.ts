@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt'
 import { JwtService } from '@nestjs/jwt';
 import { Role } from '@prisma/client';
 import { LoginDto } from './dto/login.dto';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class AuthService {
@@ -49,7 +50,63 @@ export class AuthService {
 
   }
 
-  private BuildTokenPayload(user: {
+  async refreshToken(userId: string, refreshToken: string) {
+    const tokenHash = await bcrypt.hash(refreshToken, 10);
+    const token = await this.prisma.refreshToken.findMany({
+      where: {
+        userId,
+        isRevoked: false,
+        expiresAt: { gt: new Date() }
+      }
+    })
+    let validToken: any = null;
+    for (const t of token) {
+      const isMatch = await bcrypt.compare(refreshToken, t.token);
+      if (isMatch) {
+        validToken = t;
+        break;
+      }
+    }
+    if (!validToken) {
+      await this.revokeAllUserTokens(userId);
+      throw new UnauthorizedException("Refresh token khong hop le hoac da bi thu hoi. Vui long dang nhap lai");
+    }
+
+    // thu hồi token cũ để tránh bị đánh cắp refresh token
+    await this.prisma.refreshToken.update({
+      where: { id: validToken.id },
+      data: { isRevoked: true }
+    })
+
+    // Lấy thông tin user để tạo token mới 
+    const user = await this.userService.findById(userId);
+    if (!user) throw new UnauthorizedException('User khong ton tai');
+    return this.BuildTokenPayload(user);
+
+  }
+
+  async logout(userId: string, refreshToken: string) {
+    const tokens = await this.prisma.refreshToken.findMany({
+      where: {
+        userId,
+        isRevoked: false,
+      },
+    });
+    for (const t of tokens) {
+      const isMatch = await bcrypt.compare(refreshToken, t.token);
+      if (isMatch) {
+        await this.prisma.refreshToken.update({
+          where: { id: t.id },
+          data: { isRevoked: true },
+        });
+        break;
+      }
+    }
+    return { message: 'Đăng xuất thành công' };
+  }
+
+
+  private async BuildTokenPayload(user: {
     id: string
     email: string
     fullName: string
@@ -59,17 +116,51 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role
-    }
-    const token = this.jwtService.sign(payload)
+    };
+    const accessToken = this.jwtService.sign(payload, {
+      secret: process.env.JWT_SECRET as string,
+      expiresIn: (process.env.JWT_EXPIRES_IN ?? '15m') as any,
+    });
+
+    // Dùng uuid làm jwtid để mỗi token là duy nhất
+    const jti = uuidv4();
+    const refreshToken = this.jwtService.sign(
+      { ...payload, jti },
+      {
+        secret: process.env.JWT_REFRESH_SECRET as string,
+        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ?? '7d') as any,
+      },
+    );
+
+    // Lưu HASH của refresh token xuống DB (không lưu plaintext)
+    const tokenHash = await bcrypt.hash(refreshToken, 10);
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // khớp với 7d
+    await this.prisma.refreshToken.create({
+      data: {
+        token: tokenHash,
+        userId: user.id,
+        expiresAt,
+      },
+    });
     return {
-      accessToken: token,
+      accessToken,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
-        role: user.role
-      }
-    }
+        role: user.role,
+      },
+    };
+  }
+
+  // Thu hồi toàn bộ token của 1 user (khi phát hiện token reuse)
+  private async revokeAllUserTokens(userId: string) {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, isRevoked: false },
+      data: { isRevoked: true },
+    });
   }
 
 }

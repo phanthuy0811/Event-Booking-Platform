@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, HttpStatus, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, HttpStatus, HttpCode, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-
+import { AuthGuard } from '@nestjs/passport';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import type { CurrentUserPayload } from 'src/common/decorators/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -20,4 +22,18 @@ export class AuthController {
     return this.authService.login(dto)
   }
 
+  @UseGuards(AuthGuard('jwt-refresh'))
+  @HttpCode(HttpStatus.OK)
+  @Post('refresh')
+  refresh(@CurrentUser() user: CurrentUserPayload) {
+    return this.authService.refreshToken(user.userId, user.refreshToken!);
+  }
+
+  @UseGuards(AuthGuard('jwt-refresh'))
+  @HttpCode(HttpStatus.OK)
+  @Post('logout')
+  logout(@CurrentUser() user: CurrentUserPayload) {
+    return this.authService.logout(user.userId, user.refreshToken!);
+  }
 }
+
