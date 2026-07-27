@@ -22,6 +22,12 @@ async function bootstrap() {
   // TransformResponseInterceptor bọc trong cùng để chuẩn hóa response
   app.useGlobalInterceptors(new TransformResponseInterceptor())
 
+  app.enableCors({
+    origin: 'http://localhost:5000',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+  });
+
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
