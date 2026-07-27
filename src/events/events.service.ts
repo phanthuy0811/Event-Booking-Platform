@@ -74,6 +74,15 @@ export class EventsService {
     })
   }
 
+  async findOnePublished(id: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id, status: EventStatus.PUBLISHED },
+      include: { ticketTypes: true }
+    })
+    if (!event) throw new NotFoundException('Không tìm thấy sự kiện')
+    return event
+  }
+
   //Danh sách các event publish
   async findAllEventPublished(query: findEventsQueryDto) {
     return this.prisma.event.findMany({

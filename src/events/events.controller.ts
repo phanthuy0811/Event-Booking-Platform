@@ -64,6 +64,11 @@ export class EventsController {
     return this.eventsService.approvalEvent(id)
   }
 
+  @Get(':id/publish')
+  findOnePublished(@Param('id') id: string) {
+    return this.eventsService.findOnePublished(id)
+  }
+
   @Get('publish')
   findAllEventPublish(@Query() query: findEventsQueryDto) {
     return this.eventsService.findAllEventPublished(query)
