@@ -105,10 +105,17 @@ export class ReservationsService {
         return null;
       }
 
-      await tx.reservation.update({
-        where: { id: reservationId },
-        data: { status: ReservationStatus.EXPIRED }
+      const transitioned = await tx.reservation.updateMany({
+        where: {
+          id: reservationId,
+          status: ReservationStatus.HOLDING,
+        },
+        data: { status: ReservationStatus.EXPIRED },
       });
+
+      if (transitioned.count === 0) {
+        return null;
+      }
 
       // Cộng trả lại số lượng đã trừ tạm lúc holding 
       await tx.ticketType.update({
@@ -129,77 +136,90 @@ export class ReservationsService {
 
   // User chủ động hủy giữ chỗ trước khi hết hạn
   async cancel(id: string, userId: string) {
-    const reservation = await this.findOwnerOrThrow(id, userId);
-    return this.releaseReservation(reservation);
+    await this.findOwnerOrThrow(id, userId);
+    return this.cancelByUser(id);
+  }
+
+  private async cancelByUser(reservationId: string) {
+    const releaseTicketTypeId = await this.prisma.$transaction(async (tx) => {
+      const reservation = await tx.reservation.findUnique({
+        where: { id: reservationId }
+      });
+      if (!reservation) return null;
+      const transitioned = await tx.reservation.updateMany({
+        where: {
+          id: reservationId,
+          status: ReservationStatus.HOLDING,
+        },
+        data: { status: ReservationStatus.CANCELLED },
+      });
+      if (transitioned.count === 0) {
+        throw new BadRequestException("Chi co the huy giu cho o trang thai holding");
+      }
+      await tx.ticketType.update({
+        where: { id: reservation.ticketTypeId },
+        data: {
+          remainingQuantity: { increment: reservation.quantity }
+        }
+      });
+
+      return reservation.ticketTypeId;
+    });
+
+    if (releaseTicketTypeId) {
+      const job = await this.expireQueue.getJob(reservationId);
+      if (job) await job.remove();
+      await this.broadcastAvailability(releaseTicketTypeId);
+    }
+    return { message: 'Đã hủy giữ chỗ' };
   }
 
   // Dùng khi Payments module thanh toán thất bại
   async releaseInternal(reservationId: string) {
-    const reservation = await this.prisma.reservation.findUnique({
-      where: { id: reservationId },
-    });
-    if (!reservation) throw new NotFoundException('Không tìm thấy giữ chỗ');
-    if (reservation.status !== ReservationStatus.HOLDING) {
-      return reservation;
-    }
-    return this.releaseReservation(reservation);
-  }
-
-  private async releaseReservation(reservation: {
-    id: string;
-    ticketTypeId: string;
-    quantity: number;
-    status: ReservationStatus;
-  }) {
-    if (reservation.status !== ReservationStatus.HOLDING) {
-      throw new BadRequestException(
-        'Chỉ có thể hủy giữ chỗ đang ở trạng thái holding',
-      );
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.reservation.update({
-        where: { id: reservation.id },
+    const releaseTicketTypeId = await this.prisma.$transaction(async (tx) => {
+      const reservation = await tx.reservation.findUnique({
+        where: { id: reservationId },
+      });
+      if (!reservation) return null;
+      const transitioned = await tx.reservation.updateMany({
+        where: {
+          id: reservationId,
+          status: ReservationStatus.HOLDING,
+        },
         data: { status: ReservationStatus.CANCELLED },
       });
+      if (transitioned.count === 0) return null;
       await tx.ticketType.update({
         where: { id: reservation.ticketTypeId },
         data: { remainingQuantity: { increment: reservation.quantity } },
       });
+      return reservation.ticketTypeId;
     });
-
-    const job = await this.expireQueue.getJob(reservation.id);
-    if (job) await job.remove();
-
-    await this.broadcastAvailability(reservation.ticketTypeId);
-
-    return { message: 'Đã hủy giữ chỗ' };
+    if (releaseTicketTypeId) {
+      const job = await this.expireQueue.getJob(reservationId);
+      if (job) await job.remove();
+      await this.broadcastAvailability(releaseTicketTypeId);
+    }
   }
-
 
   // Dùng nội bộ bởi order module sau khi thanh toán xong 
   // Xác nhận giữ chỗ 
   async confirm(reservationId: string) {
-    const reservation = await this.prisma.reservation.findUnique({
-      where: { id: reservationId }
-    })
-
-    if (!reservation) throw new NotFoundException('Khong tim thay giu cho');
-    if (reservation.status !== ReservationStatus.HOLDING) {
-      throw new BadRequestException('Giu cho nay khong con hieu luc');
-    }
-
-    // Không cần trừ thêm remaining nữa vì lúc create đã trừ rồi
-    const updated = await this.prisma.reservation.update({
-      where: { id: reservationId },
+    const transitioned = await this.prisma.reservation.updateMany({
+      where: {
+        id: reservationId,
+        status: ReservationStatus.HOLDING,
+      },
       data: { status: ReservationStatus.CONFIRMED },
     });
-
+    if (transitioned.count === 0) {
+      throw new BadRequestException('Giu cho nay khong con hieu luc');
+    }
     const job = await this.expireQueue.getJob(reservationId);
     if (job) await job.remove();
-
-    return updated;
+    return { reservationId, status: ReservationStatus.CONFIRMED };
   }
+
 
   findMine(userId: string) {
     return this.prisma.reservation.findMany({
