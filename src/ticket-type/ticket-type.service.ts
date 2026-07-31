@@ -21,12 +21,7 @@ export class TicketTypeService {
   }
 
   async update(eventId: string, ticketTypeId: string, organizerId: string, dto: UpdateTicketTypeDto) {
-    await this.searchEventByOrganizer(eventId, organizerId)
-    const ticketType = await this.findOne(ticketTypeId)
-
-    if (eventId !== ticketType.eventId) {
-      throw new NotFoundException('Hang ve khong thuoc su kien nay')
-    }
+    const ticketType = await this.findOwnedTicketType(ticketTypeId, eventId, organizerId);
 
     let remainingQuantity: number | undefined
     if (dto.totalQuantity !== undefined) {
@@ -49,11 +44,10 @@ export class TicketTypeService {
   }
 
   async delete(eventId: string, ticketTypeId: string, organizerId: string) {
-    await this.searchEventByOrganizer(eventId, organizerId)
-    const ticketType = await this.findOne(ticketTypeId)
+    const ticketType = await this.findOwnedTicketType(ticketTypeId, eventId, organizerId);
 
     if (ticketType.totalQuantity !== ticketType.remainingQuantity) {
-      throw new BadRequestException('Khong the xoa hang ve da duoc ban')
+      throw new BadRequestException('Khong the xoa hang ve da duoc ban');
     }
     return this.prisma.ticketType.delete({
       where: { id: ticketTypeId }
@@ -65,6 +59,22 @@ export class TicketTypeService {
       where: { id },
     });
     if (!ticketType) throw new NotFoundException('Không tìm thấy hạng vé');
+    return ticketType;
+  }
+
+  async findOwnedTicketType(ticketTypeId: string, eventId: string, organizerId: string) {
+    const ticketType = await this.prisma.ticketType.findFirst({
+      where: {
+        id: ticketTypeId,
+        eventId,
+        event: {
+          organizerId
+        },
+      }
+    });
+    if (!ticketType) {
+      throw new NotFoundException("Khong tim thay hang ve");
+    }
     return ticketType;
   }
 
