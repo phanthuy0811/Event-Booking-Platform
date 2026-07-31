@@ -171,7 +171,7 @@ export class AuthService {
   }
 
   // Thu hồi toàn bộ token của 1 user (khi phát hiện token reuse)
-  private async revokeAllUserTokens(userId: string) {
+  public async revokeAllUserTokens(userId: string) {
     await this.prisma.refreshToken.updateMany({
       where: { userId, isRevoked: false },
       data: { isRevoked: true },
