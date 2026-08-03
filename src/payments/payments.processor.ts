@@ -1,8 +1,8 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
-import { PaymentsService } from './payments.service';
 import { MOCK_PAYMENT_QUEUE } from './payments.constants';
+import { PaymentSettlementService } from './payment-settlement.service';
 
 // Worker này CHỈ tồn tại vì đang dùng mock provider. Khi thay bằng
 // VNPay/Momo/Stripe thật, XÓA HẲN file này - webhook thật sự sẽ do
@@ -11,7 +11,7 @@ import { MOCK_PAYMENT_QUEUE } from './payments.constants';
 export class PaymentsProcessor extends WorkerHost {
     private readonly logger = new Logger(PaymentsProcessor.name);
 
-    constructor(private readonly paymentsService: PaymentsService) {
+    constructor(private readonly settlementService: PaymentSettlementService) {
         super();
     }
 
@@ -19,6 +19,10 @@ export class PaymentsProcessor extends WorkerHost {
         this.logger.log(
             `[MOCK GATEWAY] Giả lập webhook cho referenceId ${job.data.referenceId}`,
         );
-        await this.paymentsService.handleWebhook(job.data.referenceId, job.data.status);
+        if (job.data.status === 'PAID') {
+            await this.settlementService.settleSuccess(job.data.referenceId);
+        } else {
+            await this.settlementService.settleFailure(job.data.referenceId);
+        }
     }
 }
