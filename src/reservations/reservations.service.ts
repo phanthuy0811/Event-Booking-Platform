@@ -6,10 +6,11 @@ import { RESERVATION_EXPIRE_JOB, RESERVATION_EXPIRE_QUEUE } from './reservations
 import { Queue } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import { CreateReservationDto } from './dto/create-reservation.dto';
-import { ReservationStatus } from '@prisma/client';
+import { PrismaClient, ReservationStatus } from '@prisma/client';
 import { ForbiddenException } from '@nestjs/common';
 import { AppGateway } from 'src/websocket/websocket.gateway';
 import { removeAllListeners } from 'process';
+import { ITXClientDenyList } from '@prisma/client/runtime/binary';
 
 const HOLD_MINUTES = Number(process.env.RESERVATION_HOLD_MINUTES ?? 10); // thời gian giữ chỗ  
 
@@ -220,6 +221,19 @@ export class ReservationsService {
     return { reservationId, status: ReservationStatus.CONFIRMED };
   }
 
+  async confirmWithTx(
+    reservationId: string,
+    tx: Omit<PrismaClient, ITXClientDenyList>,
+  ) {
+    const result = await tx.reservation.updateMany({
+      where: {
+        id: reservationId,
+        status: ReservationStatus.HOLDING,
+      },
+      data: { status: ReservationStatus.CONFIRMED },
+    });
+    return result.count;
+  }
 
   findMine(userId: string) {
     return this.prisma.reservation.findMany({

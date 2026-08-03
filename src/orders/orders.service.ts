@@ -125,36 +125,5 @@ export class OrdersService {
 
     return { message: 'Đã hủy đơn hàng' };
   }
-
-
-
-  // Dùng để payment module gọi sau khi xác nhận thanh toán thành công qua webhook
-  async markAsPaid(orderId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId }
-    });
-
-    if (!order) throw new NotFoundException('Khong tim thay don hang');
-    if (order.status !== OrderStatus.PENDING) {
-      throw new BadRequestException('Don hang khong o trang thai cho thanh toan')
-    }
-
-    // Confirm reservation trước (đổi HOLDING -> CONFIRMED, hủy job auto-expire)
-    await this.reservationService.confirm(order.reservationId);
-    const updated = await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.PAID }
-    });
-
-    // Gửi email + notification xác nhận, và lên lịch nhắc trước giờ event.
-    Promise.all([
-      this.notificationsService.sendBookingConfirmation(orderId),
-      this.notificationsService.scheduleEventReminder(orderId),
-    ]).catch((err) => {
-      console.error(`Lỗi gửi notification cho order ${orderId}:`, err);
-    });
-
-    return updated;
-  }
 }
 
