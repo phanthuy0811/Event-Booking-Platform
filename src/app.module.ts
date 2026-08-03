@@ -13,9 +13,25 @@ import { PaymentsModule } from './payments/payments.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { CommonModule } from './common/common.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, TicketTypeModule, EventsModule, ReservationsModule, QueueModule, RedisModule, OrdersModule, PaymentsModule, WebsocketModule, NotificationsModule, CommonModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    UsersModule,
+    TicketTypeModule,
+    EventsModule,
+    ReservationsModule,
+    QueueModule,
+    RedisModule,
+    OrdersModule,
+    PaymentsModule,
+    WebsocketModule,
+    NotificationsModule,
+    CommonModule,
+    ScheduleModule.forRoot(),
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

@@ -55,11 +55,15 @@ export class PaymentsService {
       },
     });
 
-    await this.mockGatewayQueue.add(
-      MOCK_PAYMENT_JOB,
-      { referenceId, status: 'PAID' as const }, // // demo: luôn giả lập thanh toán thành công
-      { delay: MOCK_WEBHOOK_DELAY_MS },
-    );
+    try {
+      await this.mockGatewayQueue.add(
+        MOCK_PAYMENT_JOB,
+        { referenceId, status: 'PAID' as const }, // // demo: luôn giả lập thanh toán thành công
+        { delay: MOCK_WEBHOOK_DELAY_MS },
+      );
+    } catch (error) {
+      console.error(`[PAYMENT] Không thể thêm job cho referenceId ${referenceId}:`, error);
+    }
 
     return {
       paymentId: payment.id,
