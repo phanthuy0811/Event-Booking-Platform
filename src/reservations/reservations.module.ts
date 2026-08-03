@@ -6,6 +6,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { RESERVATION_EXPIRE_QUEUE } from './reservations.constants';
 import { ReservationProcessor } from './Reservations.processor';
 import { WebsocketModule } from 'src/websocket/websocket.module';
+import { ReservationRecoveryService } from './ReservationRecoveryService';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { WebsocketModule } from 'src/websocket/websocket.module';
     BullModule.registerQueue({ name: RESERVATION_EXPIRE_QUEUE }),
   ],
   controllers: [ReservationsController],
-  providers: [ReservationsService, ReservationProcessor],
+  providers: [ReservationsService, ReservationProcessor, ReservationRecoveryService],
   exports: [ReservationsService]
 })
 export class ReservationsModule { }
