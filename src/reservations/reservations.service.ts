@@ -1,15 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { RedisLockService } from 'src/redis/redis-lock.service';
-import { TicketTypeService } from 'src/ticket-type/ticket-type.service';
 import { RESERVATION_EXPIRE_JOB, RESERVATION_EXPIRE_QUEUE } from './reservations.constants';
 import { Queue } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import { CreateReservationDto } from './dto/create-reservation.dto';
-import { PrismaClient, ReservationStatus } from '@prisma/client';
+import { EventStatus, PrismaClient, ReservationStatus } from '@prisma/client';
 import { ForbiddenException } from '@nestjs/common';
 import { AppGateway } from 'src/websocket/websocket.gateway';
-import { removeAllListeners } from 'process';
 import { ITXClientDenyList } from '@prisma/client/runtime/binary';
 
 const HOLD_MINUTES = Number(process.env.RESERVATION_HOLD_MINUTES ?? 10); // thời gian giữ chỗ  
@@ -18,7 +16,6 @@ const HOLD_MINUTES = Number(process.env.RESERVATION_HOLD_MINUTES ?? 10); // th�
 export class ReservationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly ticketTypeService: TicketTypeService,
     private readonly redisLockService: RedisLockService,
     private readonly appGateway: AppGateway,
     @InjectQueue(RESERVATION_EXPIRE_QUEUE) private readonly expireQueue: Queue,
@@ -26,9 +23,25 @@ export class ReservationsService {
 
   // Tao giu cho
   async create(userId: string, dto: CreateReservationDto) {
-    const ticketType = await this.ticketTypeService.findOne(dto.ticketTypeId)
+    const ticketType = await this.prisma.ticketType.findFirst({
+      where: {
+        id: dto.ticketTypeId,
+        event: {
+          status: EventStatus.PUBLISHED
+        },
+      },
+      include: { event: true }
+    })
+    if (!ticketType) {
+      throw new NotFoundException('Khong tim thay hang ve hoac su kien da ket thuc')
+    }
 
     const now = new Date();
+
+    if (now >= ticketType.event.startTime) {
+      throw new BadRequestException("su kien da bat dau");
+    }
+
     if (ticketType.salesStart && now < ticketType.salesStart) {
       throw new BadRequestException('Hang ve nay chua mo ban')
     }

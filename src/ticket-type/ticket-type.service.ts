@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotAcceptableExcep
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
+import { EventStatus } from '@prisma/client';
 
 @Injectable()
 export class TicketTypeService {
@@ -79,6 +80,16 @@ export class TicketTypeService {
   }
 
   async findAllTicketType(eventId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+    });
+    if (!event) {
+      throw new NotFoundException('Khong tim thay su kien');
+    }
+    if (event.status !== EventStatus.PUBLISHED) {
+      throw new BadRequestException('Su kien chua duoc cong bo');
+    }
+
     return this.prisma.ticketType.findMany({
       where: { eventId },
       orderBy: { price: 'asc' }
