@@ -108,11 +108,11 @@ export class AuthService {
 
     // Thêm access token vào blacklist khi logout 
     if (accessToken) {
-      const decoded = this.jwtService.decode(accessToken) as { exp?: number };
+      const decoded = this.jwtService.decode(accessToken) as { exp?: number, jti?: string };
       if (decoded?.exp) {
         const ttl = decoded.exp - Math.floor(Date.now() / 1000);
         if (ttl > 0) {
-          await this.cacheService.set(`blacklist:${accessToken}`, 'true', ttl);
+          await this.cacheService.set(`revoked_access_token:${decoded.jti}`, 'true', ttl);
         }
       }
     }
@@ -127,10 +127,12 @@ export class AuthService {
     fullName: string
     role: string
   }) {
+    const accessJti = uuidv4();
     const payload = {
       sub: user.id,
       email: user.email,
-      role: user.role
+      role: user.role,
+      jti: accessJti,
     };
     const accessToken = this.jwtService.sign(payload, {
       secret: process.env.JWT_SECRET as string,
