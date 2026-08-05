@@ -27,7 +27,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Post('refresh')
   refresh(@CurrentUser() user: CurrentUserPayload) {
-    return this.authService.refreshToken(user.userId, user.refreshToken!);
+    return this.authService.refreshToken(user.userId, user.jti!, user.refreshToken!);
   }
 
   @UseGuards(AuthGuard('jwt-refresh'))
@@ -37,7 +37,7 @@ export class AuthController {
     @CurrentUser() user: CurrentUserPayload,
     @Headers('x-access-token') accessToken: string
   ) {
-    return this.authService.logout(user.userId, user.refreshToken!, accessToken);
+    return this.authService.logout(user.userId, user.jti!, accessToken);
   }
 }
 
