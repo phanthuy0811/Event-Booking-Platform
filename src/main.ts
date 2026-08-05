@@ -9,17 +9,14 @@ import { TransformResponseInterceptor } from './common/interceptors/transform-re
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Global ValidationPipe: mọi DTO có class-validator decorator sẽ tự validate
   app.useGlobalPipes(new ValidationPipe({
-    whitelist: true, //loại bỏ field lạ không khai báo trong DTO
-    forbidNonWhitelisted: true, // báo lỗi khi có filed lạ , nếu chỉ dùng whitelist thì vẫn thành công nếu thừa field, còn dùng thêm forbidNonWhitelisted thì sẽ báo lỗi
-    transform: true, // tự động chuyển đổi kiểu dữ liệu
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
   }))
 
-  // Thứ tự QUAN TRỌNG: filter cụ thể (Prisma) đứng trước, filter bắt-tất-cả đứng sau
   app.useGlobalFilters(new PrismaExceptionFilter(), new AllExceptionsFilter())
 
-  // TransformResponseInterceptor bọc trong cùng để chuẩn hóa response
   app.useGlobalInterceptors(new TransformResponseInterceptor())
 
   app.enableCors({

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotAcceptableException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotAcceptableException, NotFoundException } from '@nestjs/common';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
@@ -22,25 +22,59 @@ export class TicketTypeService {
   }
 
   async update(eventId: string, ticketTypeId: string, organizerId: string, dto: UpdateTicketTypeDto) {
-    const ticketType = await this.findOwnedTicketType(ticketTypeId, eventId, organizerId);
 
-    let remainingQuantity: number | undefined
-    if (dto.totalQuantity !== undefined) {
-      const sold = ticketType.totalQuantity - ticketType.remainingQuantity;
-      if (dto.totalQuantity < sold) {
-        throw new BadRequestException('Khong the dat tong so ve nho hon so ve da ban')
-      }
-      remainingQuantity = dto.totalQuantity - sold
+    if (dto.totalQuantity === undefined) {
+      return this.prisma.ticketType.update({
+        where: { id: ticketTypeId },
+        data: {
+          ...dto,
+          salesStart: dto.salesStart ? new Date(dto.salesStart) : undefined,
+          salesEnd: dto.salesEnd ? new Date(dto.salesEnd) : undefined,
+        }
+      })
     }
 
-    return this.prisma.ticketType.update({
-      where: { id: ticketTypeId },
-      data: {
-        ...dto,
-        salesStart: dto.salesStart ? new Date(dto.salesStart) : undefined,
-        salesEnd: dto.salesEnd ? new Date(dto.salesEnd) : undefined,
-        remainingQuantity
+    const newTotalquantity = dto.totalQuantity;
+
+    return this.prisma.$transaction(async (tx) => {
+      const ticketType = await tx.ticketType.findFirst({
+        where: {
+          id: ticketTypeId,
+          eventId,
+          event: { organizerId }
+        },
+      });
+      if (!ticketType) throw new NotFoundException('Khong tim thay hang ve');
+
+      const sold = ticketType.totalQuantity - ticketType.remainingQuantity;
+      if (newTotalquantity < sold) {
+        throw new BadRequestException("Khong the dat tong so ve nho hon so ve da ban");
+      };
+      const newRemaining = ticketType.remainingQuantity + (newTotalquantity - ticketType.totalQuantity)
+      if (newRemaining < 0) {
+        throw new BadRequestException("So ve con lai khong the am");
       }
+
+      const result = await tx.ticketType.updateMany({
+        where: {
+          id: ticketTypeId,
+          version: ticketType.version,
+        },
+        data: {
+          ...dto,
+          salesStart: dto.salesStart ? new Date(dto.salesStart) : undefined,
+          salesEnd: dto.salesEnd ? new Date(dto.salesEnd) : undefined,
+          remainingQuantity: newRemaining,
+          version: { increment: 1 }
+        }
+      })
+
+      if (result.count === 0) {
+        throw new ConflictException(
+          'Du lieu vua bi thay doi. Vui long thu lai'
+        );
+      }
+      return tx.ticketType.findUnique({ where: { id: ticketTypeId } });
     })
   }
 

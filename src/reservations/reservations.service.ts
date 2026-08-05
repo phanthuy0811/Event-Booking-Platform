@@ -68,6 +68,7 @@ export class ReservationsService {
             },
             data: {
               remainingQuantity: { decrement: dto.quantity },
+              version: { increment: 1 },
             }
           });
 
@@ -135,7 +136,8 @@ export class ReservationsService {
       await tx.ticketType.update({
         where: { id: reservation.ticketTypeId },
         data: {
-          remainingQuantity: { increment: reservation.quantity }
+          remainingQuantity: { increment: reservation.quantity },
+          version: { increment: 1 },
         }
       });
 
@@ -173,7 +175,8 @@ export class ReservationsService {
       await tx.ticketType.update({
         where: { id: reservation.ticketTypeId },
         data: {
-          remainingQuantity: { increment: reservation.quantity }
+          remainingQuantity: { increment: reservation.quantity },
+          version: { increment: 1 },
         }
       });
 
@@ -205,7 +208,10 @@ export class ReservationsService {
       if (transitioned.count === 0) return null;
       await tx.ticketType.update({
         where: { id: reservation.ticketTypeId },
-        data: { remainingQuantity: { increment: reservation.quantity } },
+        data: {
+          remainingQuantity: { increment: reservation.quantity },
+          version: { increment: 1 },
+        },
       });
       return reservation.ticketTypeId;
     });
