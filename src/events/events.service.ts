@@ -6,6 +6,7 @@ import { EventStatus } from '@prisma/client';
 import { findEventsQueryDto } from './dto/find-events-query.dto';
 import { BadRequestException } from '@nestjs/common';
 import { CacheService } from 'src/redis/cache.service';
+import { EventCancellationService } from './event-cancellation.service';
 
 
 // Mọi cache key của danh sách public đều bắt đầu bằng prefix này -> khi cần
@@ -20,7 +21,8 @@ const PUBLISHED_EVENTS_CACHE_TTL_SECONDS = Number(
 export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly cacheService: CacheService
+    private readonly cacheService: CacheService,
+    private readonly cancellationService: EventCancellationService,
   ) { }
 
   create(organizerId: string, dto: CreateEventDto) {
@@ -55,26 +57,7 @@ export class EventsService {
   }
 
   async cancel(id: string, currentUser: { userId: string; role: string }) {
-    const event = await this.prisma.event.findUnique({ where: { id } });
-    if (!event) throw new NotFoundException('Không tìm thấy sự kiện');
-
-    const isOwner = event.organizerId === currentUser.userId;
-    const isAdmin = currentUser.role === 'ADMIN';
-    if (!isOwner && !isAdmin) {
-      throw new ForbiddenException('Bạn không có quyền hủy sự kiện này');
-    }
-
-    const updated = await this.prisma.event.update({
-      where: { id },
-      data: { status: EventStatus.CANCELLED },
-    });
-
-    // Nếu event đang PUBLISHED thì giờ nó phải BIẾN MẤT khỏi danh sách public
-    if (event.status === EventStatus.PUBLISHED) {
-      await this.cacheService.delByPrefix(PUBLISHED_EVENTS_CACHE_PREFIX);
-    }
-
-    return updated
+    return this.cancellationService.cancelEvent(id, currentUser);
   }
 
   // Organizer gửi event để admin duyệt

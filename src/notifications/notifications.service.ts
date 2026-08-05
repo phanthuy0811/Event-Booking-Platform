@@ -148,4 +148,25 @@ export class NotificationsService {
       <p>Tổng tiền: ${order.totalAmount}</p>
     `;
   }
+
+  // Gửi notification khi event bị hủy
+  async sendEventCancellationNotification(userId: string, eventTitle: string) {
+    const title = 'Sự kiện đã bị hủy';
+    const message = `Sự kiện "${eventTitle}" đã bị hủy. Nếu bạn đã thanh toán, hoàn tiền sẽ được xử lý sớm.`;
+
+    await this.createAndPush(userId, 'event_cancelled', title, message);
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!user) return;
+
+    await this.mailerService.sendEmail({
+      to: user.email,
+      subject: `Thông báo hủy sự kiện: ${eventTitle}`,
+      html: `<h2>Sự kiện đã bị hủy</h2><p>${message}</p>`,
+    });
+  }
+
 }
