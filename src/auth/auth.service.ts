@@ -52,73 +52,60 @@ export class AuthService {
 
   }
 
-  async refreshToken(userId: string, refreshToken: string) {
-    const tokenHash = await bcrypt.hash(refreshToken, 10);
-    const token = await this.prisma.refreshToken.findMany({
-      where: {
-        userId,
-        isRevoked: false,
-        expiresAt: { gt: new Date() }
-      }
+  async refreshToken(userId: string, tokenJti: string, refreshToken: string) {
+    const token = await this.prisma.refreshToken.findUnique({
+      where: { id: tokenJti }
     })
-    let validToken: any = null;
-    for (const t of token) {
-      const isMatch = await bcrypt.compare(refreshToken, t.token);
-      if (isMatch) {
-        validToken = t;
-        break;
-      }
-    }
-    if (!validToken) {
+
+    if (!token || token.isRevoked) {
       await this.revokeAllUserTokens(userId);
       throw new UnauthorizedException("Refresh token khong hop le hoac da bi thu hoi. Vui long dang nhap lai");
     }
 
-    // thu hồi token cũ để tránh bị đánh cắp refresh token
+    if (token.expiresAt < new Date()) {
+      throw new UnauthorizedException("Refresh token da het han. Vui long dang nhap lai");
+    }
+
+    const isMatch = await bcrypt.compare(refreshToken, token.token);
+    if (!isMatch) {
+      await this.revokeAllUserTokens(userId);
+      throw new UnauthorizedException("Refresh token khong hop le. Vui long dang nhap lai");
+    }
+
     await this.prisma.refreshToken.update({
-      where: { id: validToken.id },
+      where: { id: tokenJti },
       data: { isRevoked: true }
-    })
+    });
 
-    // Lấy thông tin user để tạo token mới 
     const user = await this.userService.findById(userId);
-    if (!user) throw new UnauthorizedException('User khong ton tai');
+    if (!user) throw new UnauthorizedException("User khong hop le");
     return this.BuildTokenPayload(user);
-
   }
 
-  async logout(userId: string, refreshToken: string, accessToken?: string) {
-    // thu hồi refresh token 
-    const tokens = await this.prisma.refreshToken.findMany({
+
+  async logout(userId: string, tokenJti: string, accessToken?: string) {
+    await this.prisma.refreshToken.updateMany({
       where: {
+        id: tokenJti,
         userId,
         isRevoked: false,
       },
+      data: { isRevoked: true },
     });
-    for (const t of tokens) {
-      const isMatch = await bcrypt.compare(refreshToken, t.token);
-      if (isMatch) {
-        await this.prisma.refreshToken.update({
-          where: { id: t.id },
-          data: { isRevoked: true },
-        });
-        break;
-      }
-    }
 
-    // Thêm access token vào blacklist khi logout 
     if (accessToken) {
-      const decoded = this.jwtService.decode(accessToken) as { exp?: number, jti?: string };
-      if (decoded?.exp) {
+      const decoded = this.jwtService.decode(accessToken) as { exp?: number; jti?: string };
+      if (decoded?.exp && decoded?.jti) {
         const ttl = decoded.exp - Math.floor(Date.now() / 1000);
         if (ttl > 0) {
-          await this.cacheService.set(`revoked_access_token:${decoded.jti}`, 'true', ttl);
+          await this.cacheService.set(`revoked-access-token:${decoded.jti}`, 'true', ttl);
         }
       }
     }
 
     return { message: 'Đăng xuất thành công' };
   }
+
 
 
   private async BuildTokenPayload(user: {
@@ -140,21 +127,23 @@ export class AuthService {
     });
 
     // Dùng uuid làm jwtid để mỗi token là duy nhất
-    const jti = uuidv4();
+    const refreshJti = uuidv4();
     const refreshToken = this.jwtService.sign(
-      { ...payload, jti },
+      { sub: user.id, email: user.email, role: user.role, jti: refreshJti },
       {
         secret: process.env.JWT_REFRESH_SECRET as string,
         expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ?? '7d') as any,
       },
     );
 
-    // Lưu HASH của refresh token xuống DB (không lưu plaintext)
+    const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+    const expiresInMs = this.parseExpiry(refreshExpiresIn);
+    const expiresAt = new Date(Date.now() + expiresInMs);
+
     const tokenHash = await bcrypt.hash(refreshToken, 10);
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // khớp với 7d
     await this.prisma.refreshToken.create({
       data: {
+        id: refreshJti,
         token: tokenHash,
         userId: user.id,
         expiresAt,
@@ -178,6 +167,19 @@ export class AuthService {
       where: { userId, isRevoked: false },
       data: { isRevoked: true },
     });
+  }
+
+  // Parse chuỗi "7d", "15m", "1h" thành milliseconds
+  private parseExpiry(expiry: string): number {
+    const unit = expiry.slice(-1);
+    const value = parseInt(expiry.slice(0, -1), 10);
+    switch (unit) {
+      case 's': return value * 1000;
+      case 'm': return value * 60 * 1000;
+      case 'h': return value * 60 * 60 * 1000;
+      case 'd': return value * 24 * 60 * 60 * 1000;
+      default: return 7 * 24 * 60 * 60 * 1000; // fallback 7 ngày
+    }
   }
 
 }

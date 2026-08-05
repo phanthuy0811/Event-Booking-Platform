@@ -13,21 +13,23 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
             ignoreExpiration: false,
             secretOrKey: process.env.JWT_REFRESH_SECRET,
-            passReqToCallback: true
-        })
+            passReqToCallback: true,
+        });
     }
-
-    async validate(req: Request, payload: { sub: string, eamil: string, role: string }) {
+    async validate(
+        req: Request,
+        payload: { sub: string; email: string; role: string; jti: string },
+    ) {
         const rawToken = req.get('Authorization')?.replace('Bearer', '').trim();
-        if (!rawToken)
-            throw new UnauthorizedException('Refresh token khong hop le');
-
+        if (!rawToken) {
+            throw new UnauthorizedException('Refresh token không hợp lệ');
+        }
         return {
             userId: payload.sub,
-            email: payload.eamil,
+            email: payload.email,
             role: payload.role,
-            refreshToken: rawToken
-        }
+            jti: payload.jti,
+            refreshToken: rawToken,
+        };
     }
-
 }
