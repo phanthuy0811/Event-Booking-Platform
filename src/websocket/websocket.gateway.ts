@@ -61,6 +61,7 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     // Được gọi bỏi ReservationService mỗi khi remainingQuantity đổi
     broadcastTicketAvailability(eventId: string, payload: unknown) {
+        if (!this.server) return;
         this.server
             .to(this.eventRoom(eventId))
             .emit(WS_SERVER_EVENTS.TICKET_AVAILABILITY_UPDATED, payload);
@@ -69,6 +70,7 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Được gọi bởi notification service 
     // Trả về true/false để NotificationsService biết user CÓ đang mở app hay không để gửi thông báo lên màn hình
     pushNotificationToUser(userId: string, payload: unknown): boolean {
+        if (!this.server) return false;
         const room = this.server.sockets.adapter.rooms.get(this.userRoom(userId));
         const isOnline = !!room && room.size > 0;
         if (isOnline) {
