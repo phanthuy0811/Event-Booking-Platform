@@ -26,11 +26,19 @@ export class EventsService {
   ) { }
 
   create(organizerId: string, dto: CreateEventDto) {
+
+    const start = new Date(dto.startTime);
+    const end = new Date(dto.endTime);
+
+    if (end <= start) {
+      throw new BadRequestException('Thời gian kết thúc phải sau thời gian bắt đầu');
+    }
+
     return this.prisma.event.create({
       data: {
         ...dto,
-        startTime: new Date(dto.startTime),
-        endTime: new Date(dto.endTime),
+        startTime: start,
+        endTime: end,
         organizerId,
         status: EventStatus.DRAFT
       }
@@ -39,6 +47,14 @@ export class EventsService {
 
   async update(id: string, organizerId: string, dto: UpdateEventDto) {
     const event = await this.searchEventByOrganizer(id, organizerId)
+
+    const start = dto.startTime ? new Date(dto.startTime) : event.startTime;
+    const end = dto.endTime ? new Date(dto.endTime) : event.endTime;
+
+    if (end <= start) {
+      throw new BadRequestException('Thời gian kết thúc phải sau thời gian bắt đầu');
+    }
+
     const updated = await this.prisma.event.update({
       where: { id: id },
       data: {
