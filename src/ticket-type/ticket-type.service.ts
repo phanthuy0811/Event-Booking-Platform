@@ -9,19 +9,55 @@ export class TicketTypeService {
   constructor(private readonly prisma: PrismaService) { }
 
   async create(eventId: string, organizerId: string, dto: CreateTicketTypeDto) {
-    await this.searchEventByOrganizer(eventId, organizerId)
+
+    const event = await this.searchEventByOrganizer(eventId, organizerId);
+
+    const salesStart = dto.salesStart ? new Date(dto.salesStart) : undefined;
+    const salesEnd = dto.salesEnd ? new Date(dto.salesEnd) : undefined;
+
+    if (salesEnd && salesStart && salesEnd <= salesStart) {
+      throw new BadRequestException('Thời gian kết thúc bán vé phải sau thời gian bắt đầu');
+    }
+
+    if (salesStart && salesStart >= event.startTime) {
+      throw new BadRequestException('Thời gian bắt đầu bán vé phải trước thời gian bắt đầu sự kiện');
+    }
+
+    if (salesEnd && salesEnd >= event.endTime) {
+      throw new BadRequestException('Thời gian kết thúc bán vé phải trước thời gian kết thúc sự kiện');
+    }
+
     return this.prisma.ticketType.create({
       data: {
         eventId,
         ...dto,
-        salesStart: dto.salesStart ? new Date(dto.salesStart) : undefined,
-        salesEnd: dto.salesEnd ? new Date(dto.salesEnd) : undefined,
+        salesStart,
+        salesEnd,
         remainingQuantity: dto.totalQuantity,
       }
     })
   }
 
   async update(eventId: string, ticketTypeId: string, organizerId: string, dto: UpdateTicketTypeDto) {
+
+    const ticketType = await this.findOwnedTicketType(ticketTypeId, eventId, organizerId);
+
+    const event = ticketType.event;
+
+    const salesStart = dto.salesStart !== undefined ? (dto.salesStart ? new Date(dto.salesStart) : null) : ticketType.salesStart;
+    const salesEnd = dto.salesEnd !== undefined ? (dto.salesEnd ? new Date(dto.salesEnd) : null) : ticketType.salesEnd;
+
+    if (salesEnd && salesStart && salesEnd <= salesStart) {
+      throw new BadRequestException('Thời gian kết thúc bán vé phải sau thời gian bắt đầu');
+    }
+
+    if (salesStart && salesStart >= event.startTime) {
+      throw new BadRequestException('Thời gian bắt đầu bán vé phải trước thời gian bắt đầu sự kiện');
+    }
+
+    if (salesEnd && salesEnd >= event.endTime) {
+      throw new BadRequestException('Thời gian kết thúc bán vé phải trước thời gian kết thúc sự kiện');
+    }
 
     if (dto.totalQuantity === undefined) {
       return this.prisma.ticketType.update({
@@ -31,7 +67,7 @@ export class TicketTypeService {
           salesStart: dto.salesStart ? new Date(dto.salesStart) : undefined,
           salesEnd: dto.salesEnd ? new Date(dto.salesEnd) : undefined,
         }
-      })
+      });
     }
 
     const newTotalquantity = dto.totalQuantity;
@@ -67,7 +103,7 @@ export class TicketTypeService {
           remainingQuantity: newRemaining,
           version: { increment: 1 }
         }
-      })
+      });
 
       if (result.count === 0) {
         throw new ConflictException(
@@ -105,6 +141,9 @@ export class TicketTypeService {
         event: {
           organizerId
         },
+      },
+      include: {
+        event: true
       }
     });
     if (!ticketType) {

@@ -23,9 +23,9 @@ export class CreateEventDto {
 
     @IsDateString()
     @IsNotEmpty()
-    startTime: Date
+    startTime: string
 
     @IsDateString()
     @IsNotEmpty()
-    endTime: Date
+    endTime: string
 }
