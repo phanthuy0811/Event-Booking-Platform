@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ReservationsService } from 'src/reservations/reservations.service';
-import { OrderStatus, ReservationStatus } from '@prisma/client';
+import { OrderStatus, Prisma, ReservationStatus } from '@prisma/client';
 import { NotificationsService } from 'src/notifications/notifications.service';
 import { DEFAULT_REMINDER_MINUTES, REMINDER_PRESETS_MINUTES } from 'src/notifications/notifications.constants';
 
@@ -50,7 +50,7 @@ export class OrdersService {
     // Chốt giá TẠI THỜI ĐIỂM MUA - nếu sau này organizer đổi giá vé,
     // đơn hàng cũ không bị ảnh hưởng
     const unitPrice = reservation.ticketType.price;
-    const totalAmount = Number(unitPrice) * reservation.quantity;
+    const totalAmount = reservation.ticketType.price.mul(reservation.quantity)
     return this.prisma.order.create({
       data: {
         userId: userId,
