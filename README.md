@@ -282,3 +282,31 @@ PENDING → PAID      (thanh toán thành công)
 | `PORT` | Port server lắng nghe | `3000` |
 | `RESERVATION_HOLD_MINUTES` | Số phút giữ chỗ tối đa | `10` |
 | `MOCK_PAYMENT_WEBHOOK_DELAY_MS` | Delay giả lập webhook thanh toán (ms) | `5000` |
+
+
+
+## 1. Khởi tạo project
+nest new event-booking-backend
+cd event-booking-backend
+
+## 2. Cài Prisma + các thư viện chính
+npm install prisma @prisma/client
+npm install @nestjs/passport passport passport-jwt @nestjs/jwt
+npm install @nestjs/websockets @nestjs/platform-socket.io
+npm install @nestjs/bullmq bullmq ioredis
+npm install class-validator class-transformer joi
+npm install @nestjs/swagger
+npm install qrcode
+
+npx prisma init
+
+## 3. Chép 3 file mình vừa tạo vào đúng vị trí:
+### prisma/schema.prisma
+### docker-compose.yml (ở root)
+### .env  (copy từ .env.example rồi điền)
+
+## 4. Bật hạ tầng dev
+docker compose up -d
+
+## 5. Chạy migration đầu tiên
+npx prisma migrate dev --name init
