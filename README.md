@@ -310,3 +310,11 @@ docker compose up -d
 
 ## 5. Chạy migration đầu tiên
 npx prisma migrate dev --name init
+
+
+# Lệnh xem các key trong redis
+## 1. Chạy truy cập redis 
+docker exec -it event-booking-redis redis-cli
+
+## 2. Xem các key 
+KEYS *
