@@ -61,7 +61,7 @@ export class PaymentSettlementService {
 
             const reservationResult = await tx.reservation.updateMany({
                 where: {
-                    userId: order.userId,
+                    id: order.reservationId,
                     status: ReservationStatus.HOLDING
                 },
                 data: {
