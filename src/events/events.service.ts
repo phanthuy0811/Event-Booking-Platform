@@ -5,23 +5,15 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { EventStatus } from '@prisma/client';
 import { findEventsQueryDto } from './dto/find-events-query.dto';
 import { BadRequestException } from '@nestjs/common';
-import { CacheService } from 'src/redis/cache.service';
 import { EventCancellationService } from './event-cancellation.service';
-
-
-// Mọi cache key của danh sách public đều bắt đầu bằng prefix này -> khi cần
-// invalidate, xóa TOÀN BỘ key khớp prefix
-const PUBLISHED_EVENTS_CACHE_PREFIX = 'events:published:';
-const PUBLISHED_EVENTS_CACHE_TTL_SECONDS = Number(
-  process.env.EVENTS_CACHE_TTL_SECONDS ?? 60,
-);
+import { EventsCacheService } from './events-cache.service';
 
 
 @Injectable()
 export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly cacheService: CacheService,
+    private readonly evenCacheService: EventsCacheService,
     private readonly cancellationService: EventCancellationService,
   ) { }
 
@@ -66,7 +58,7 @@ export class EventsService {
     // Event đang PUBLISHED mà bị sửa (đổi giờ, đổi tên...) -> cache cũ sai,
     // phải xóa ngay. Event đang DRAFT thì xóa cũng vô hại (không có gì để xóa).
     if (event.status === EventStatus.PUBLISHED) {
-      await this.cacheService.delByPrefix(PUBLISHED_EVENTS_CACHE_PREFIX);
+      await this.evenCacheService.invalidatePublishedEvents();
     }
 
     return updated;
@@ -106,7 +98,7 @@ export class EventsService {
     });
     // Event VỪA xuất hiện trong danh sách public -> mọi cache list hiện tại
     // đều đang thiếu event này, phải xóa để lần gọi tiếp theo query lại DB
-    await this.cacheService.delByPrefix(PUBLISHED_EVENTS_CACHE_PREFIX);
+    await this.evenCacheService.invalidatePublishedEvents();
 
     return updated;
   }
@@ -123,22 +115,27 @@ export class EventsService {
   //Danh sách các event publish
   async findAllEventPublished(query: findEventsQueryDto) {
 
-    const cacheKey = this.buildPublishedCacheKey(query);
-    const cached = await this.cacheService.get(cacheKey);
+    const cached = await this.evenCacheService.getPublishedEvents(query);
     if (cached) return cached;
+
+    const search = query.search?.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 100);
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
 
     const events = await this.prisma.event.findMany({
       where: {
         status: EventStatus.PUBLISHED,
-        location: query.location ? { contains: query.location, mode: 'insensitive' } : undefined, // mode insensitive: khong phan biet hoa thuong
+        location: query.location ? { contains: query.location.trim(), mode: 'insensitive' } : undefined, // mode insensitive: khong phan biet hoa thuong
         category: query.category ?? undefined,
-        title: query.search ? { contains: query.search, mode: 'insensitive' } : undefined
+        title: search ? { contains: search, mode: 'insensitive' } : undefined
       },
       include: { ticketTypes: true },
-      orderBy: { startTime: 'asc' }
+      orderBy: { startTime: 'asc' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
-    await this.cacheService.set(cacheKey, events, PUBLISHED_EVENTS_CACHE_TTL_SECONDS);
+    await this.evenCacheService.setPublishedEvents(query, events);
     return events;
   }
 
@@ -149,13 +146,6 @@ export class EventsService {
       include: { ticketTypes: true },
       orderBy: { createdAt: 'desc' }
     })
-  }
-
-  private buildPublishedCacheKey(query: findEventsQueryDto): string {
-    const location = query.location ?? '';
-    const category = query.category ?? '';
-    const search = query.search ?? '';
-    return `${PUBLISHED_EVENTS_CACHE_PREFIX}${location}:${category}:${search}`;
   }
 
   async searchEventByOrganizer(id: string, organizerId: string) {

@@ -5,7 +5,10 @@ import Redis from "ioredis";
 @Injectable()
 export class CacheService {
     private readonly logger = new Logger(CacheService.name);
-    constructor(@Inject(REDIS_LOCK) private readonly redis: Redis) { }
+    private readonly EVENTS_VERSION_KEY = 'events:published:version'
+    constructor(
+        @Inject(REDIS_LOCK) private readonly redis: Redis,
+    ) { }
 
     async get<T>(key: string): Promise<T | null> {
         const raw = await this.redis.get(key)
@@ -42,5 +45,16 @@ export class CacheService {
         if (found) {
             await pipeline.exec();
         }
+    }
+
+    // Lấy version hiện tại (dùng để build cache key có version)
+    async getEventsVersion(): Promise<number> {
+        const v = await this.redis.get(this.EVENTS_VERSION_KEY);
+        return v ? parseInt(v, 10) : 0;
+    }
+    // Invalidate bằng cách tăng version — KHÔNG cần SCAN
+    // Toàn bộ cache key cũ sẽ tự nhiên bị "lỗi thời" vì key mới sẽ khác version
+    async invalidatePublishedEvents(): Promise<void> {
+        await this.redis.incr(this.EVENTS_VERSION_KEY);
     }
 }

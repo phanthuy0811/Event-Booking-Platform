@@ -8,6 +8,7 @@ import { EVENT_CANCELLATION_QUEUE } from './event-cancellation.constants';
 import { NOTIFICATION_REMINDER_QUEUE } from 'src/notifications/notifications.constants';
 import { EventCancellationProcessor } from './event-cancellation.processor';
 import { EventCancellationService } from './event-cancellation.service';
+import { EventsCacheService } from './events-cache.service';
 
 
 @Module({
@@ -20,6 +21,6 @@ import { EventCancellationService } from './event-cancellation.service';
     )
   ],
   controllers: [EventsController],
-  providers: [EventsService, EventCancellationProcessor, EventCancellationService],
+  providers: [EventsService, EventCancellationProcessor, EventCancellationService, EventsCacheService],
 })
 export class EventsModule { }
