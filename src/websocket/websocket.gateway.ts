@@ -1,12 +1,16 @@
-import { Logger } from "@nestjs/common";
+import { Logger, UseGuards } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { WebSocketServer, OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, SubscribeMessage, MessageBody, ConnectedSocket } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
 import { WS_CLIENT_EVENTS, WS_SERVER_EVENTS } from "./websocket.events";
+import { CacheService } from "src/redis/cache.service";
+import { WsJwtGuard } from "src/auth/guards/ws-jwt.guard";
+
 
 @WebSocketGateway({
     cors: {
-        origin: "*",
+        origin: process.env.FRONTEND_URL || "*",
+        credentials: true,
     }
 })
 export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -14,26 +18,40 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
     server: Server;
 
     private readonly logger = new Logger(AppGateway.name);
-    constructor(private readonly jwtService: JwtService) { }
+    constructor(
+        private readonly jwtService: JwtService,
+        private readonly cacheService: CacheService,
+    ) { }
 
-    // Chạy mỗi khi có 1 client (browser tab) kết nối socket
     async handleConnection(client: Socket) {
-        const token = this.extractToken(client);
+        const token = client.handshake.auth?.token;
 
-        // Không có token vẫn cho kết nối bình thường - họ chỉ không nhận được
-        // notification cá nhân, nhưng vẫn join room công khai (xem vé real-time) được  
+        // Không có token vẫn cho kết nối bình thường
+        // Vẫn có thể join room công khai (xem vé real-time)
         if (!token) {
             this.logger.log(`Client ${client.id} kết nối dạng khách (không JWT)`);
             return;
         }
         try {
-            const payload = this.jwtService.verify(token);
+            const payload = this.jwtService.verify(token, {
+                secret: process.env.JWT_SECRET,
+            });
+            if (payload.jti) {
+                const isRevoked = await this.cacheService.get(`revoked-access-token:${payload.jti}`);
+                if (isRevoked) {
+                    this.logger.warn(`Client ${client.id} dùng token đã bị thu hồi `)
+                    client.disconnect();
+                    return;
+                }
+            }
+
             client.data.userId = payload.sub;
             // Tự động join room riêng của user -> nhận được notification cá nhân
             await client.join(this.userRoom(payload.sub));
             this.logger.log(`Client ${client.id} xác thực là user ${payload.sub}`);
         } catch (err) {
             this.logger.warn(`Client ${client.id} gửi JWT không hợp lệ: ${err.message}`);
+            client.disconnect();
         }
     }
 
@@ -57,6 +75,15 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @MessageBody() data: { eventId: string },
     ) {
         client.leave(this.eventRoom(data.eventId));
+    }
+
+    @UseGuards(WsJwtGuard)
+    @SubscribeMessage('SOME_PRIVATE_ACTION')
+    handleSomePrivateAction(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: any
+    ) {
+        const userId = client.data.userId;
     }
 
     // Được gọi bỏi ReservationService mỗi khi remainingQuantity đổi
@@ -86,11 +113,5 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     private userRoom(userId: string) {
         return `user:${userId}`;
-    }
-
-    private extractToken(client: Socket): string | null {
-        const fromAuth = client.handshake.auth?.token as string | undefined;
-        const fromQuery = client.handshake.query?.token as string | undefined;
-        return fromAuth ?? fromQuery ?? null;
     }
 }
