@@ -8,19 +8,23 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { MOCK_PAYMENT_JOB, MOCK_PAYMENT_QUEUE } from './payments.constants';
 import { Queue } from 'bullmq';
 import { PaymentSettlementService } from './payment-settlement.service';
+import { ConfigService } from '@nestjs/config';
 
-const MOCK_WEBHOOK_DELAY_MS = Number(process.env.MOCK_WEBHOOK_DELAY_MS) || 5000;
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settlementService: PaymentSettlementService,
+    private readonly configService: ConfigService,
     @InjectQueue(MOCK_PAYMENT_QUEUE) private readonly mockGatewayQueue: Queue,
   ) { }
 
   // User bấm "Thanh toán" -> tạo Payment PENDING, giả lập gọi cổng thanh toán 
   async initiate(userId: string, orderId: string) {
+
+    const delayMs = this.configService.get<number>('MOCK_PAYMENT_WEBHOOK_DELAY_MS', 5000);
+
     const order = await this.prisma.order.findUnique({
       where: { id: orderId }
     })
@@ -59,7 +63,7 @@ export class PaymentsService {
       await this.mockGatewayQueue.add(
         MOCK_PAYMENT_JOB,
         { referenceId, status: 'PAID' as const }, // // demo: luôn giả lập thanh toán thành công
-        { delay: MOCK_WEBHOOK_DELAY_MS },
+        { delay: delayMs },
       );
     } catch (error) {
       console.error(`[PAYMENT] Không thể thêm job cho referenceId ${referenceId}:`, error);
