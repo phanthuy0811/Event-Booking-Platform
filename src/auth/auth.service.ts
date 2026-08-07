@@ -8,13 +8,15 @@ import { Role } from '@prisma/client';
 import { LoginDto } from './dto/login.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { CacheService } from 'src/redis/cache.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
   constructor(private readonly userService: UsersService,
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
-    private readonly cacheService: CacheService
+    private readonly cacheService: CacheService,
+    private readonly configService: ConfigService
   ) { }
 
   async register(dto: RegisterDto) {
@@ -122,8 +124,8 @@ export class AuthService {
       jti: accessJti,
     };
     const accessToken = this.jwtService.sign(payload, {
-      secret: process.env.JWT_SECRET as string,
-      expiresIn: (process.env.JWT_EXPIRES_IN ?? '15m') as any,
+      secret: this.configService.get<string>('JWT_SECRET'),
+      expiresIn: this.configService.get<string>('JWT_EXPIRES_IN', '15m') as any,
     });
 
     // Dùng uuid làm jwtid để mỗi token là duy nhất
@@ -131,12 +133,12 @@ export class AuthService {
     const refreshToken = this.jwtService.sign(
       { sub: user.id, email: user.email, role: user.role, jti: refreshJti },
       {
-        secret: process.env.JWT_REFRESH_SECRET as string,
-        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ?? '7d') as any,
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d') as any,
       },
     );
 
-    const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
     const expiresInMs = this.parseExpiry(refreshExpiresIn);
     const expiresAt = new Date(Date.now() + expiresInMs);
 

@@ -9,8 +9,7 @@ import { EventStatus, PrismaClient, ReservationStatus } from '@prisma/client';
 import { ForbiddenException } from '@nestjs/common';
 import { AppGateway } from 'src/websocket/websocket.gateway';
 import { ITXClientDenyList } from '@prisma/client/runtime/binary';
-
-const HOLD_MINUTES = Number(process.env.RESERVATION_HOLD_MINUTES ?? 10); // thời gian giữ chỗ  
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ReservationsService {
@@ -18,11 +17,13 @@ export class ReservationsService {
     private readonly prisma: PrismaService,
     private readonly redisLockService: RedisLockService,
     private readonly appGateway: AppGateway,
+    private readonly configService: ConfigService,
     @InjectQueue(RESERVATION_EXPIRE_QUEUE) private readonly expireQueue: Queue,
   ) { }
 
   // Tao giu cho
   async create(userId: string, dto: CreateReservationDto) {
+    const holdMinutes = this.configService.get<number>('RESERVATION_HOLD_MINUTES', 10);
     const ticketType = await this.prisma.ticketType.findFirst({
       where: {
         id: dto.ticketTypeId,
@@ -48,7 +49,7 @@ export class ReservationsService {
     if (ticketType.salesEnd && now > ticketType.salesEnd) {
       throw new BadRequestException('Hang ve nay da dong ban')
     }
-    const expiresAt = new Date(now.getTime() + HOLD_MINUTES * 60 * 1000);
+    const expiresAt = new Date(now.getTime() + holdMinutes * 60 * 1000);
 
 
     // Lớp bảo vệ đầu tiên: redis lock
@@ -97,7 +98,7 @@ export class ReservationsService {
     await this.expireQueue.add(
       RESERVATION_EXPIRE_JOB,
       { reservationId: reservation.id },
-      { jobId: reservation.id, delay: HOLD_MINUTES * 60 * 1000 }
+      { jobId: reservation.id, delay: holdMinutes * 60 * 1000 }
     )
 
     // Broadcast cho mọi client đang xem trang chi tiết event này biết
