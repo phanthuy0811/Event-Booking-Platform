@@ -6,6 +6,9 @@ import { NOTIFICATION_REMINDER_JOB, NOTIFICATION_REMINDER_QUEUE } from './notifi
 import { Queue } from 'bullmq';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { OrderStatus, EventStatus } from '@prisma/client';
+import { CursorPaginationDto } from 'src/common/dto/cursor-pagination.dto';
+import { buildCursorResponse } from 'src/common/dto/cursor-paginated-response.dto';
+
 
 const ORDER_WITH_EVENT_INCLUDE = {
   user: true,
@@ -102,11 +105,16 @@ export class NotificationsService {
   }
 
 
-  findMine(userId: string) {
-    return this.prisma.notification.findMany({
+  async findMine(userId: string, dto: CursorPaginationDto) {
+    const { cursor, limit } = dto;
+    const notifications = await this.prisma.notification.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
+      take: limit + 1,
+      skip: cursor ? 1 : 0,
+      cursor: cursor ? { id: cursor } : undefined,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
+    return buildCursorResponse(notifications, limit);
   }
 
   // Đánh dấu thông báo là đã đọc 

@@ -7,6 +7,8 @@ import { findEventsQueryDto } from './dto/find-events-query.dto';
 import { BadRequestException } from '@nestjs/common';
 import { EventCancellationService } from './event-cancellation.service';
 import { EventsCacheService } from './events-cache.service';
+import { CursorPaginationDto } from 'src/common/dto/cursor-pagination.dto';
+import { buildCursorResponse } from 'src/common/dto/cursor-paginated-response.dto';
 
 
 @Injectable()
@@ -140,12 +142,17 @@ export class EventsService {
   }
 
   // Danh sách các event của organizer
-  async findAllEventByOrganizer(organizerId: string) {
-    return this.prisma.event.findMany({
-      where: { organizerId: organizerId },
+  async findAllEventByOrganizer(organizerId: string, dto: CursorPaginationDto) {
+    const { cursor, limit } = dto;
+    const events = await this.prisma.event.findMany({
+      where: { organizerId },
+      take: limit + 1,
+      skip: cursor ? 1 : 0,
+      cursor: cursor ? { id: cursor } : undefined,
       include: { ticketTypes: true },
-      orderBy: { createdAt: 'desc' }
-    })
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    return buildCursorResponse(events, limit);
   }
 
   async searchEventByOrganizer(id: string, organizerId: string) {

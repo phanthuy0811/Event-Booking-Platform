@@ -10,6 +10,9 @@ import { ForbiddenException } from '@nestjs/common';
 import { AppGateway } from 'src/websocket/websocket.gateway';
 import { ITXClientDenyList } from '@prisma/client/runtime/binary';
 import { ConfigService } from '@nestjs/config';
+import { CursorPaginationDto } from 'src/common/dto/cursor-pagination.dto';
+import { buildCursorResponse } from 'src/common/dto/cursor-paginated-response.dto';
+
 
 @Injectable()
 export class ReservationsService {
@@ -255,12 +258,17 @@ export class ReservationsService {
     return result.count;
   }
 
-  findMine(userId: string) {
-    return this.prisma.reservation.findMany({
+  async findMine(userId: string, dto: CursorPaginationDto) {
+    const { cursor, limit } = dto;
+    const reservations = await this.prisma.reservation.findMany({
       where: { userId },
-      include: { ticketType: true },
-      orderBy: { createdAt: 'desc' }
-    })
+      take: limit + 1,
+      skip: cursor ? 1 : 0,
+      cursor: cursor ? { id: cursor } : undefined,
+      include: { ticketType: { include: { event: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    return buildCursorResponse(reservations, limit);
   }
 
   private async findOwnerOrThrow(id: string, userId: string) {
