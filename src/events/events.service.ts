@@ -66,8 +66,8 @@ export class EventsService {
     return updated;
   }
 
-  async cancel(id: string, currentUser: { userId: string; role: string }) {
-    return this.cancellationService.cancelEvent(id, currentUser);
+  async cancel(id: string, currentUser: { userId: string; role: string }, correlationId?: string) {
+    return this.cancellationService.cancelEvent(id, currentUser, correlationId);
   }
 
   // Organizer gửi event để admin duyệt

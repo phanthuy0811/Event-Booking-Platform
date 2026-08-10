@@ -12,8 +12,8 @@ export class EventCancellationProcessor extends WorkerHost {
         super();
     }
 
-    async process(job: Job<{ eventId: string }>) {
-        this.logger.log(`[Worker] Xử lý cancellation cho event ${job.data.eventId}`);
+    async process(job: Job<{ eventId: string; correlationId?: string }>) {
+        this.logger.log(`[Worker] Xử lý cancellation cho event ${job.data.eventId} | RequestID: ${job.data.correlationId || 'N/A'}`);
         await this.cancellationService.processEventCancellation(job.data.eventId);
     }
 }

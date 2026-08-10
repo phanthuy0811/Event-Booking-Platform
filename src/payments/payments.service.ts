@@ -21,7 +21,7 @@ export class PaymentsService {
   ) { }
 
   // User bấm "Thanh toán" -> tạo Payment PENDING, giả lập gọi cổng thanh toán 
-  async initiate(userId: string, orderId: string) {
+  async initiate(userId: string, orderId: string, correlationId?: string) {
 
     const delayMs = this.configService.get<number>('MOCK_PAYMENT_WEBHOOK_DELAY_MS', 5000);
 
@@ -62,7 +62,7 @@ export class PaymentsService {
     try {
       await this.mockGatewayQueue.add(
         MOCK_PAYMENT_JOB,
-        { referenceId, status: 'PAID' as const }, // // demo: luôn giả lập thanh toán thành công
+        { referenceId, status: 'PAID' as const, correlationId }, // // demo: luôn giả lập thanh toán thành công
         { delay: delayMs },
       );
     } catch (error) {

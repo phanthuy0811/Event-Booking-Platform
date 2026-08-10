@@ -12,8 +12,8 @@ export class NotificationsProcessor extends WorkerHost {
         super();
     }
 
-    async process(job: Job<{ orderId: string }>) {
-        this.logger.log(`Gửi nhắc lịch cho order ${job.data.orderId}`);
+    async process(job: Job<{ orderId: string; correlationId?: string }>) {
+        this.logger.log(`Gửi nhắc lịch cho order ${job.data.orderId} | RequestID: ${job.data.correlationId || 'N/A'}`);
         await this.notificationsService.sendEventReminder(job.data.orderId);
     }
 }

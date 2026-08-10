@@ -13,10 +13,10 @@ export class ReservationProcessor extends WorkerHost {
     constructor(private readonly reservationService: ReservationsService) {
         super();
     }
-    async process(job: Job<{ reservationId: string }>) {
-        const { reservationId } = job.data;
+    async process(job: Job<{ reservationId: string; correlationId?: string }>) {
+        const { reservationId, correlationId } = job.data;
         this.logger.log(
-            `[Job ${job.id}] attempt=${job.attemptsMade + 1} — expire reservation ${reservationId}`
+            `[Job ${job.id}] attempt=${job.attemptsMade + 1} — expire reservation ${reservationId} | RequestID: ${correlationId || 'N/A'}`
         );
         try {
             await this.reservationService.expireIfStillHolding(reservationId);

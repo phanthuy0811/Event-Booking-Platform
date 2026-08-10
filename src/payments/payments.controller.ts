@@ -17,7 +17,7 @@ export class PaymentsController {
     @CurrentUser() user: CurrentUserPayload,
     @Body() dto: CreatePaymentDto
   ) {
-    return this.paymentsService.initiate(user.userId, dto.orderId);
+    return this.paymentsService.initiate(user.userId, dto.orderId, user.requestId);
   }
 
   @UseGuards(JwtAuthGuard)

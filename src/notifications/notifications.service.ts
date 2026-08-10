@@ -63,7 +63,7 @@ export class NotificationsService {
   // Được OrdersService gọi ngay sau sendBookingConfirmation
   // Tính thời điểm cần nhắc dựa trên event.startTime - reminderMinutesBefore,
   // đẩy 1 job delay NGAY LÚC NÀY (không cần cron quét định kỳ).
-  async scheduleEventReminder(orderId: string) {
+  async scheduleEventReminder(orderId: string, correlationId?: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: ORDER_WITH_EVENT_INCLUDE
@@ -82,7 +82,7 @@ export class NotificationsService {
 
     await this.reminderQueue.add(
       NOTIFICATION_REMINDER_JOB,
-      { orderId },
+      { orderId, correlationId },
       { delay, jobId: `reminder-${orderId}` },
     )
   }
