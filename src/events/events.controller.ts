@@ -9,6 +9,8 @@ import { UpdateEventDto } from './dto/update-event.dto';
 import { Role } from '@prisma/client';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { findEventsQueryDto } from './dto/find-events-query.dto';
+import { CursorPaginationDto } from 'src/common/dto/cursor-pagination.dto';
+
 
 @Controller('events')
 export class EventsController {
@@ -78,9 +80,10 @@ export class EventsController {
   @Roles('ORGANIZER')
   @Get('organizer')
   findAllByOrganizer(
-    @CurrentUser() user: CurrentUserPayload
+    @CurrentUser() user: CurrentUserPayload,
+    @Query() pagination: CursorPaginationDto,
   ) {
-    return this.eventsService.findAllEventByOrganizer(user.userId)
+    return this.eventsService.findAllEventByOrganizer(user.userId, pagination)
   }
 
 }

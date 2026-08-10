@@ -4,6 +4,9 @@ import { ReservationsService } from 'src/reservations/reservations.service';
 import { OrderStatus, Prisma, ReservationStatus } from '@prisma/client';
 import { NotificationsService } from 'src/notifications/notifications.service';
 import { DEFAULT_REMINDER_MINUTES, REMINDER_PRESETS_MINUTES } from 'src/notifications/notifications.constants';
+import { CursorPaginationDto } from 'src/common/dto/cursor-pagination.dto';
+import { buildCursorResponse } from 'src/common/dto/cursor-paginated-response.dto';
+
 
 @Injectable()
 export class OrdersService {
@@ -70,12 +73,17 @@ export class OrdersService {
     });
   }
 
-  findMine(userId: string) {
-    return this.prisma.order.findMany({
+  async findMine(userId: string, dto: CursorPaginationDto) {
+    const { cursor, limit } = dto;
+    const orders = await this.prisma.order.findMany({
       where: { userId },
+      take: limit + 1,
+      skip: cursor ? 1 : 0,
+      cursor: cursor ? { id: cursor } : undefined,
       include: { items: { include: { ticketType: true } }, payment: true, reservation: true },
-      orderBy: { createdAt: 'desc' }
-    })
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    return buildCursorResponse(orders, limit);
   }
 
   async findOneOwned(id: string, userId: string) {
