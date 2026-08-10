@@ -10,13 +10,23 @@ import { Job } from "bullmq";
 @Processor(RESERVATION_EXPIRE_QUEUE)
 export class ReservationProcessor extends WorkerHost {
     private readonly logger = new Logger(ReservationProcessor.name);
-
     constructor(private readonly reservationService: ReservationsService) {
         super();
     }
-
     async process(job: Job<{ reservationId: string }>) {
-        this.logger.log(`Dang xu ly expire cho reservation ${job.data.reservationId}`);
-        await this.reservationService.expireIfStillHolding(job.data.reservationId);
+        const { reservationId } = job.data;
+        this.logger.log(
+            `[Job ${job.id}] attempt=${job.attemptsMade + 1} — expire reservation ${reservationId}`
+        );
+        try {
+            await this.reservationService.expireIfStillHolding(reservationId);
+            this.logger.log(`[Job ${job.id}] Expire reservation ${reservationId} thành công`);
+        } catch (err) {
+            this.logger.error(
+                `[Job ${job.id}] attempt=${job.attemptsMade + 1} FAILED — reservationId=${reservationId} — ${err.message}`
+            );
+
+            throw err;
+        }
     }
 }
