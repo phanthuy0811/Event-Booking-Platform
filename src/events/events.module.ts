@@ -9,7 +9,7 @@ import { NOTIFICATION_REMINDER_QUEUE } from 'src/notifications/notifications.con
 import { EventCancellationProcessor } from './event-cancellation.processor';
 import { EventCancellationService } from './event-cancellation.service';
 import { EventsCacheService } from './events-cache.service';
-
+import { EventLifecycleService } from './event-lifecycle.service';
 
 @Module({
   imports: [
@@ -21,6 +21,12 @@ import { EventsCacheService } from './events-cache.service';
     )
   ],
   controllers: [EventsController],
-  providers: [EventsService, EventCancellationProcessor, EventCancellationService, EventsCacheService],
+  providers: [
+    EventsService,
+    EventCancellationProcessor,
+    EventCancellationService,
+    EventsCacheService,
+    EventLifecycleService,
+  ],
 })
 export class EventsModule { }

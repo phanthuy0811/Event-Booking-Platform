@@ -10,11 +10,15 @@ import { Role } from '@prisma/client';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { findEventsQueryDto } from './dto/find-events-query.dto';
 import { CursorPaginationDto } from 'src/common/dto/cursor-pagination.dto';
+import { EventLifecycleService } from './event-lifecycle.service';
 
 
 @Controller('events')
 export class EventsController {
-  constructor(private readonly eventsService: EventsService) { }
+  constructor(
+    private readonly eventsService: EventsService,
+    private readonly lifecycleService: EventLifecycleService
+  ) { }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER')
@@ -54,7 +58,7 @@ export class EventsController {
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload
   ) {
-    return this.eventsService.submitForApproval(id, user.userId)
+    return this.lifecycleService.submitForApproval(id, user.userId)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -63,7 +67,21 @@ export class EventsController {
   approvalEvent(
     @Param('id') id: string
   ) {
-    return this.eventsService.approvalEvent(id)
+    return this.lifecycleService.approve(id)
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Patch(':id/reject')
+  rejectEvent(@Param('id') id: string) {
+    return this.lifecycleService.reject(id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  @Patch(':id/close')
+  closeEvent(@Param('id') id: string) {
+    return this.lifecycleService.close(id);
   }
 
   @Get(':id/publish')

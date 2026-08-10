@@ -26,7 +26,8 @@ enum EventStatus {
   PENDING_APPROVAL
   PUBLISHED
   CANCELLED
-  CLOSED  
+  CLOSED
+  REJECTED
 }
 
 enum ReservationStatus {
@@ -67,27 +68,26 @@ model User {
   reservations    Reservation[]
   orders          Order[]
   notifications   Notification[]
-  refreshTokens RefreshToken[]
+  refreshTokens   RefreshToken[]
 
   @@map("users")
 }
-
 
 // ------------------------------------------------------------
 // REFRESH TOKEN
 // ------------------------------------------------------------
 model RefreshToken {
   id        String   @id
-  token     String   @unique          // lưu hash của token (không lưu plaintext)
+  token     String   @unique // lưu hash của token (không lưu plaintext)
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   isRevoked Boolean  @default(false)
   createdAt DateTime @default(now())
+
   @@index([userId])
   @@map("refresh_tokens")
 }
-
 
 // ------------------------------------------------------------
 // EVENT
@@ -234,12 +234,12 @@ model Payment {
 // ------------------------------------------------------------
 
 model Ticket {
-  id           String    @id @default(uuid())
+  id           String     @id @default(uuid())
   orderId      String
-  order        Order     @relation(fields: [orderId], references: [id])
+  order        Order      @relation(fields: [orderId], references: [id])
   ticketTypeId String
   ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
-  qrCode       String    @unique
+  qrCode       String     @unique
   checkedInAt  DateTime?
 
   createdAt DateTime @default(now())
