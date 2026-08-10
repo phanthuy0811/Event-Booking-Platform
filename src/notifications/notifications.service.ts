@@ -8,6 +8,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { OrderStatus, EventStatus } from '@prisma/client';
 import { CursorPaginationDto } from 'src/common/dto/cursor-pagination.dto';
 import { buildCursorResponse } from 'src/common/dto/cursor-paginated-response.dto';
+import { MailTemplateService } from './mail-template.service';
 
 
 const ORDER_WITH_EVENT_INCLUDE = {
@@ -23,6 +24,7 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     private readonly appGateway: AppGateway,
     private readonly mailerService: MailerService,
+    private readonly mailTemplateService: MailTemplateService,
     @InjectQueue(NOTIFICATION_REMINDER_QUEUE)
     private readonly reminderQueue: Queue,
   ) { }
@@ -46,7 +48,14 @@ export class NotificationsService {
     await this.mailerService.sendEmail({
       to: order.user.email,
       subject: `Xác nhận đặt vé - ${event.title}`,
-      html: this.buildBookingConfirmationHtml(order, event, item),
+      html: this.mailTemplateService.buildBookingConfirmation({
+        eventTitle: event.title,
+        eventStartTime: event.startTime.toLocaleString('vi-VN'),
+        eventLocation: event.location,
+        ticketTypeName: item.ticketType.name,
+        quantity: item.quantity,
+        totalAmount: String(order.totalAmount),
+      }),
     });
 
   }
@@ -100,7 +109,11 @@ export class NotificationsService {
     await this.mailerService.sendEmail({
       to: order.user.email,
       subject: `Nhắc lịch: ${event.title} sắp diễn ra`,
-      html: `<p>${message}</p><p>Địa điểm: ${event.location}</p>`,
+      html: this.mailTemplateService.buildEventReminder({
+        eventTitle: event.title,
+        eventStartTime: event.startTime.toLocaleString('vi-VN'),
+        eventLocation: event.location,
+      }),
     });
   }
 
@@ -142,20 +155,6 @@ export class NotificationsService {
     return notification;
   }
 
-  private buildBookingConfirmationHtml(
-    order: { totalAmount: unknown },
-    event: { title: string; startTime: Date; location: string },
-    item: { quantity: number; ticketType: { name: string; price: unknown } },
-  ): string {
-    return `
-      <h2>Xác nhận đặt vé thành công</h2>
-      <p>Sự kiện: <b>${event.title}</b></p>
-      <p>Thời gian: ${event.startTime.toLocaleString('vi-VN')}</p>
-      <p>Địa điểm: ${event.location}</p>
-      <p>Hạng vé: ${item.ticketType.name} x ${item.quantity}</p>
-      <p>Tổng tiền: ${order.totalAmount}</p>
-    `;
-  }
 
   // Gửi notification khi event bị hủy
   async sendEventCancellationNotification(userId: string, eventTitle: string) {
@@ -173,7 +172,7 @@ export class NotificationsService {
     await this.mailerService.sendEmail({
       to: user.email,
       subject: `Thông báo hủy sự kiện: ${eventTitle}`,
-      html: `<h2>Sự kiện đã bị hủy</h2><p>${message}</p>`,
+      html: this.mailTemplateService.buildEventCancellation({ eventTitle }),
     });
   }
 

@@ -6,6 +6,7 @@ import { NOTIFICATION_REMINDER_QUEUE } from './notifications.constants';
 import { WebsocketModule } from 'src/websocket/websocket.module';
 import { MailerService } from './mailer.service';
 import { NotificationsProcessor } from './notifications.processor';
+import { MailTemplateService } from './mail-template.service';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { NotificationsProcessor } from './notifications.processor';
     BullModule.registerQueue({ name: NOTIFICATION_REMINDER_QUEUE }),
   ],
   controllers: [NotificationsController],
-  providers: [NotificationsService, NotificationsProcessor, MailerService],
+  providers: [NotificationsService, NotificationsProcessor, MailerService, MailTemplateService],
   exports: [NotificationsService]
 })
 export class NotificationsModule { }

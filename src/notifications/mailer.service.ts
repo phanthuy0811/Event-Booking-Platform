@@ -29,7 +29,6 @@ export class MailerService {
             this.logger.log(
                 `[MOCK EMAIL - chưa cấu hình SMTP] to=${options.to} subject="${options.subject}"`,
             );
-            this.logger.debug(options.html);
             return;
         }
 
