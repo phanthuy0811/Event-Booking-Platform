@@ -22,7 +22,7 @@ export class EventCancellationService {
         @InjectQueue('notification-reminder') private readonly reminderQueue: Queue,
     ) { }
 
-    async cancelEvent(eventId: string, users: { userId: string, role: string }) {
+    async cancelEvent(eventId: string, users: { userId: string, role: string }, correlationId?: string) {
         const event = await this.prisma.event.findUnique({
             where: { id: eventId }
         });
@@ -47,7 +47,7 @@ export class EventCancellationService {
         try {
             await this.cancellationQueue.add(
                 EVENT_CANCELLATION_JOB,
-                { eventId },
+                { eventId, correlationId },
                 {
                     jobId: `event-cancel-${eventId}`,
                     attempts: 3,

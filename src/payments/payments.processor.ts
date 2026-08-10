@@ -14,14 +14,14 @@ export class PaymentsProcessor extends WorkerHost {
     constructor(private readonly settlementService: PaymentSettlementService) {
         super();
     }
-    async process(job: Job<{ referenceId: string; status: 'PAID' | 'FAILED' }>) {
-        const { referenceId, status } = job.data;
+    async process(job: Job<{ referenceId: string; status: 'PAID' | 'FAILED'; correlationId?: string }>) {
+        const { referenceId, status, correlationId } = job.data;
         this.logger.log(
-            `[Job ${job.id}] attempt=${job.attemptsMade + 1} — settle payment referenceId=${referenceId} status=${status}`
+            `[Job ${job.id}] attempt=${job.attemptsMade + 1} — settle payment referenceId=${referenceId} status=${status} | RequestID: ${correlationId || 'N/A'}`
         );
         try {
             if (status === 'PAID') {
-                const result = await this.settlementService.settleSuccess(referenceId);
+                const result = await this.settlementService.settleSuccess(referenceId, correlationId);
                 this.logger.log(`[Job ${job.id}] settleSuccess referenceId=${referenceId} → ${result}`);
             } else {
                 await this.settlementService.settleFailure(referenceId);

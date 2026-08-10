@@ -25,7 +25,7 @@ export class ReservationsService {
   ) { }
 
   // Tao giu cho
-  async create(userId: string, dto: CreateReservationDto) {
+  async create(userId: string, dto: CreateReservationDto, correlationId?: string) {
     const holdMinutes = this.configService.get<number>('RESERVATION_HOLD_MINUTES', 10);
     const ticketType = await this.prisma.ticketType.findFirst({
       where: {
@@ -100,7 +100,7 @@ export class ReservationsService {
     // sau này nếu user confirm/cancel sớm hơn thời hạn.
     await this.expireQueue.add(
       RESERVATION_EXPIRE_JOB,
-      { reservationId: reservation.id },
+      { reservationId: reservation.id, correlationId },
       { jobId: reservation.id, delay: holdMinutes * 60 * 1000 }
     )
 

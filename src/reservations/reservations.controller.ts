@@ -16,7 +16,7 @@ export class ReservationsController {
     @CurrentUser() user: CurrentUserPayload,
     @Body() dto: CreateReservationDto
   ) {
-    return this.reservationsService.create(user.userId, dto)
+    return this.reservationsService.create(user.userId, dto, user.requestId)
   }
 
   @Get('my')

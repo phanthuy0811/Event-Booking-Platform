@@ -16,7 +16,7 @@ export class PaymentSettlementService {
         @InjectQueue(RESERVATION_EXPIRE_QUEUE) private readonly expireQueue: Queue,
     ) { }
 
-    async settleSuccess(referenceId: string): Promise<'settled' | 'already_processed'> {
+    async settleSuccess(referenceId: string, correlationId?: string): Promise<'settled' | 'already_processed'> {
         let settledOrderId: string | null = null;
         let settledReservationId: string | null = null;
 
@@ -81,7 +81,7 @@ export class PaymentSettlementService {
 
             Promise.all([
                 this.notificationService.sendBookingConfirmation(settledOrderId),
-                this.notificationService.scheduleEventReminder(settledOrderId)
+                this.notificationService.scheduleEventReminder(settledOrderId, correlationId)
             ]).catch((err) => {
                 console.error(`Lỗi gửi notification cho order ${settledOrderId}:`, err);
             });
