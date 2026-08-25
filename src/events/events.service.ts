@@ -9,6 +9,7 @@ import { EventCancellationService } from './event-cancellation.service';
 import { EventsCacheService } from './events-cache.service';
 import { CursorPaginationDto } from 'src/common/dto/cursor-pagination.dto';
 import { buildCursorResponse } from 'src/common/dto/cursor-paginated-response.dto';
+import { AdminFindEventsDto } from './dto/admin-find-events.dto';
 
 
 @Injectable()
@@ -139,6 +140,42 @@ export class EventsService {
 
     await this.evenCacheService.setPublishedEvents(query, events);
     return events;
+  }
+
+  // Admin xem tất cả events (lọc theo status, search theo title)
+  async findAllForAdmin(query: AdminFindEventsDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const search = query.search?.trim().toLowerCase().slice(0, 100);
+
+    const where: any = {};
+    if (query.status) {
+      where.status = query.status;
+    }
+    if (search) {
+      where.title = { contains: search, mode: 'insensitive' };
+    }
+
+    const [events, total] = await Promise.all([
+      this.prisma.event.findMany({
+        where,
+        include: {
+          ticketTypes: true,
+          organizer: { select: { id: true, email: true, fullName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.event.count({ where }),
+    ]);
+
+    return {
+      items: events,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   // Danh sách các event của organizer
