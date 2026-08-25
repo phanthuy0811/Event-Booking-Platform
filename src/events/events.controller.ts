@@ -11,6 +11,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { findEventsQueryDto } from './dto/find-events-query.dto';
 import { CursorPaginationDto } from 'src/common/dto/cursor-pagination.dto';
 import { EventLifecycleService } from './event-lifecycle.service';
+import { AdminFindEventsDto } from './dto/admin-find-events.dto';
 
 
 @Controller('events')
@@ -82,6 +83,13 @@ export class EventsController {
   @Patch(':id/close')
   closeEvent(@Param('id') id: string) {
     return this.lifecycleService.close(id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('admin')
+  findAllForAdmin(@Query() query: AdminFindEventsDto) {
+    return this.eventsService.findAllForAdmin(query);
   }
 
   @Get(':id/publish')
